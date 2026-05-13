@@ -31,7 +31,9 @@ class Mailing(Base, TimestampedMixin):
         default=MailingStatus.CREATED,
         nullable=False,
     )
-    messages = relationship("Message", back_populates="mailing", cascade="all, delete-orphan")
+    messages = relationship(
+        "Message", back_populates="mailing", cascade="all, delete-orphan"
+    )
 
 
 class Message(Base, TimestampedMixin):
@@ -43,9 +45,13 @@ class Message(Base, TimestampedMixin):
     )
     msisdn: Mapped[str] = mapped_column(String(15), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    
     status: Mapped[MessageStatus] = mapped_column(
-        Enum(MessageStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]),
+        Enum(
+            MessageStatus,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
         default=MessageStatus.CREATED,
         nullable=False,
     )
+    mailing = relationship("Mailing", back_populates="messages")

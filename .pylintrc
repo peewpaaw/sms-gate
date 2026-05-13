@@ -1,2 +1,5 @@
 [MASTER]
-disable= empty-docstring,missing-class-docstring, missing-module-docstring
+disable= empty-docstring,missing-class-docstring, missing-module-docstring, missing-function-docstring
+ignore=alembic
+ignore-paths=^alembic/.*$
+

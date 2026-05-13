@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domains.mailing.models import MailingStatus, MessageStatus
 
@@ -27,6 +27,8 @@ class MailingCreate(BaseModel):
 
 
 class MessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     msisdn: str
     text: str
@@ -34,6 +36,8 @@ class MessageRead(BaseModel):
 
 
 class MailingRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     status: MailingStatus
     messages: list[MessageRead]
