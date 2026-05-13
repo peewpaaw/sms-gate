@@ -31,9 +31,14 @@ class Mailing(Base, TimestampedMixin):
         default=MailingStatus.CREATED,
         nullable=False,
     )
+    created_by_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"), nullable=False)
+    updated_by_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"), nullable=False)
+    
     messages = relationship(
         "Message", back_populates="mailing", cascade="all, delete-orphan"
     )
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
 
 
 class Message(Base, TimestampedMixin):

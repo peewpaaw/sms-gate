@@ -3,6 +3,6 @@ from .models import MailingStatus
 
 
 class MailingFilter(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="forbid")
 
     status: MailingStatus | None = None

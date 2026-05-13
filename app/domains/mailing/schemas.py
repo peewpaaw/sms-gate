@@ -3,6 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.domains.auth.schemas import UserRead
 from app.domains.mailing.models import MailingStatus, MessageStatus
 
 
@@ -41,5 +42,7 @@ class MailingRead(BaseModel):
     id: UUID
     status: MailingStatus
     messages: list[MessageRead]
+    created_by: UserRead
+    updated_by: UserRead
     created_at: datetime
     updated_at: datetime

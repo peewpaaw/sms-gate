@@ -13,8 +13,10 @@ class MailingRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def create(self, payload: MailingCreate) -> Mailing:
+    async def create(self, payload: MailingCreate, created_by_id: UUID) -> Mailing:
         mailing = Mailing(
+            created_by_id=created_by_id,
+            updated_by_id=created_by_id,
             messages=[
                 Message(
                     msisdn=message.msisdn,
@@ -25,41 +27,69 @@ class MailingRepository:
         )
         self.session.add(mailing)
         await self.session.flush()
-        await self.session.refresh(mailing, attribute_names=["messages"])
+        await self.session.refresh(
+            mailing,
+            attribute_names=["messages", "created_by", "updated_by"],
+        )
         return mailing
 
     async def get_by_id(self, mailing_id: UUID) -> Mailing | None:
         query = (
             select(Mailing)
-            .options(selectinload(Mailing.messages))
+            .options(
+                selectinload(Mailing.messages),
+                selectinload(Mailing.created_by),
+                selectinload(Mailing.updated_by),
+            )
             .where(Mailing.id == mailing_id)
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
-    async def list(self, *, limit: int = 100, offset: int = 0) -> Sequence[Mailing]:
+    async def list(
+        self,
+        *,
+        status: MailingStatus | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[Mailing]:
         query = (
             select(Mailing)
-            .options(selectinload(Mailing.messages))
+            .options(
+                selectinload(Mailing.messages),
+                selectinload(Mailing.created_by),
+                selectinload(Mailing.updated_by),
+            )
             .order_by(Mailing.created_at.desc())
-            .limit(limit)
-            .offset(offset)
         )
+        if status is not None:
+            query = query.where(Mailing.status == status)
+
+        query = query.limit(limit).offset(offset)
         result = await self.session.execute(query)
         return result.scalars().all()
 
+    async def count(self, *, status: MailingStatus | None = None) -> int:
+        query = select(func.count()).select_from(Mailing)
+        if status is not None:
+            query = query.where(Mailing.status == status)
+
+        result = await self.session.execute(query)
+        return result.scalar_one()
+
     async def update(
-        self, mailing_id: UUID, *, status: MailingStatus | None = None
+        self, mailing_id: UUID, *, updated_by_id: UUID
     ) -> Mailing | None:
         mailing = await self.get_by_id(mailing_id)
         if mailing is None:
             return None
 
-        if status is not None:
-            mailing.status = status
-
+        mailing.updated_by_id = updated_by_id
         await self.session.flush()
-        await self.session.refresh(mailing, attribute_names=["messages"])
+        await self.session.refresh(
+            mailing,
+            attribute_names=["messages", "created_by", "updated_by"],
+        )
         return mailing
 
     async def delete(self, mailing_id: UUID) -> bool:
