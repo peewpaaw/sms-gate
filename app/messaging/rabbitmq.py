@@ -37,7 +37,9 @@ async def setup_topology(channel: AbstractChannel) -> None:
         },
     )
     await send_queue.bind(send_exchange, routing_key=topology.SEND_BATCH_ROUTING_KEY)
-    await send_retry_queue.bind(send_exchange, routing_key=topology.SEND_RETRY_ROUTING_KEY)
+    await send_retry_queue.bind(
+        send_exchange, routing_key=topology.SEND_RETRY_ROUTING_KEY
+    )
 
     status_queue = await channel.declare_queue(
         topology.STATUS_QUEUE,
@@ -53,5 +55,9 @@ async def setup_topology(channel: AbstractChannel) -> None:
             "x-dead-letter-routing-key": topology.STATUS_CHECK_ROUTING_KEY,
         },
     )
-    await status_queue.bind(status_exchange, routing_key=topology.STATUS_CHECK_ROUTING_KEY)
-    await status_retry_queue.bind(status_exchange, routing_key=topology.STATUS_RETRY_ROUTING_KEY)
+    await status_queue.bind(
+        status_exchange, routing_key=topology.STATUS_CHECK_ROUTING_KEY
+    )
+    await status_retry_queue.bind(
+        status_exchange, routing_key=topology.STATUS_RETRY_ROUTING_KEY
+    )
