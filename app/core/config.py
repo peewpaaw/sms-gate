@@ -8,6 +8,12 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/smsgate"
     default_api_key: str = ""
 
+    # PROVIDERS
+    beltelecom_base_url: str = "https://sms.beltelecom.by"
+    beltelecom_username: str = ""
+    beltelecom_password: str = ""
+    beltelecom_timeout_sec: float = 15.0
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

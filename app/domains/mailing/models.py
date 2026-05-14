@@ -1,21 +1,10 @@
 from uuid import UUID, uuid4
-from enum import StrEnum
 
 from sqlalchemy import Enum, ForeignKey, Index, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin
-
-
-class MailingStatus(StrEnum):
-    CREATED = "created"
-
-
-class MessageStatus(StrEnum):
-    CREATED = "created"
-    SENDING = "sending"
-    DELIVERED = "delivered"
-    FAILED = "failed"
+from .enums import MailingStatus, MessageStatus
 
 
 class Mailing(Base, TimestampedMixin):
@@ -31,9 +20,13 @@ class Mailing(Base, TimestampedMixin):
         default=MailingStatus.CREATED,
         nullable=False,
     )
-    created_by_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"), nullable=False)
-    updated_by_id: Mapped[UUID] = mapped_column(ForeignKey("user.id", ondelete="RESTRICT"), nullable=False)
-    
+    created_by_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_by_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user.id", ondelete="RESTRICT"), nullable=False
+    )
+
     messages = relationship(
         "Message", back_populates="mailing", cascade="all, delete-orphan"
     )
