@@ -10,8 +10,16 @@ class MessageStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
     SUBMITTED = "submitted"
-    SENDING = "sending"
     DELIVERED = "delivered"
     UNDELIVERED = "undelivered"
     FAILED = "failed"
     UNKNOWN = "unknown"
+
+
+class MessagesBatchStatus(StrEnum):
+    CREATED = "created"
+    QUEUED = "queued"
+    SUBMITTED = "sent"
+    COMPLETED = "completed"
+    PARTIALLY_FAILED = "partially_failed"
+    FAILED = "failed"

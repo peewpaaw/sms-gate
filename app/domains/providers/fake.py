@@ -6,7 +6,7 @@ from .base.provider import (
 )
 
 
-class FakeBeltelecomSMSProvider:
+class FakeProvider:
     code = "fake"
     max_batch_size = 10
 

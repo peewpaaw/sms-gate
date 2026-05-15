@@ -1,10 +1,14 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domains.auth.schemas import UserRead
+from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.models import MailingStatus, MessageStatus
+
+from app.domains.providers.base.provider import Provider
+from app.domains.providers.registry import provider_registry
 
 
 class MessageCreate(BaseModel):
@@ -24,6 +28,7 @@ class MessageCreate(BaseModel):
 
 
 class MailingCreate(BaseModel):
+    provider_code: str = Field(min_length=1, max_length=100)
     messages: list[MessageCreate]
 
 
@@ -46,3 +51,11 @@ class MailingRead(BaseModel):
     updated_by: UserRead
     created_at: datetime
     updated_at: datetime
+
+
+class MessagesBatchRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    provider_code: str
+    status: MessagesBatchStatus

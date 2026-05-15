@@ -1,16 +1,17 @@
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, ForeignKey, Index, String, Text
+from sqlalchemy import Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin
-from .enums import MailingStatus, MessageStatus
+from .enums import MailingStatus, MessageStatus, MessagesBatchStatus
 
 
 class Mailing(Base, TimestampedMixin):
     __tablename__ = "mailing"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    provider_code: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[MailingStatus] = mapped_column(
         Enum(
             MailingStatus,
@@ -30,6 +31,7 @@ class Mailing(Base, TimestampedMixin):
     messages = relationship(
         "Message", back_populates="mailing", cascade="all, delete-orphan"
     )
+    batches = relationship("MessagesBatch", back_populates="mailing")
     created_by = relationship("User", foreign_keys=[created_by_id])
     updated_by = relationship("User", foreign_keys=[updated_by_id])
 
@@ -52,4 +54,32 @@ class Message(Base, TimestampedMixin):
         default=MessageStatus.CREATED,
         nullable=False,
     )
+    batch_id: Mapped[UUID] = mapped_column(
+        ForeignKey("messages_batch.id", ondelete="SET NULL"), nullable=True
+    )
+
     mailing = relationship("Mailing", back_populates="messages")
+    batch = relationship("MessagesBatch", back_populates="messages")
+
+
+class MessagesBatch(Base, TimestampedMixin):
+    __tablename__ = "messages_batch"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
+    mailing_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mailing.id", ondelete="CASCADE"), nullable=False
+    )
+    provider_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    status: Mapped[MessagesBatchStatus] = mapped_column(
+        Enum(
+            MessagesBatchStatus,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        default=MessagesBatchStatus.CREATED,
+        nullable=False,
+    )
+    messages_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    messages = relationship("Message", back_populates="batch")
+    mailing = relationship("Mailing", back_populates="batches")

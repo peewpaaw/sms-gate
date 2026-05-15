@@ -5,8 +5,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.models import Mailing, MailingStatus, Message
+from app.domains.mailing.enums import MessagesBatchStatus
+from app.domains.mailing.models import Mailing, MailingStatus, Message, MessagesBatch
 from app.domains.mailing.schemas import MailingCreate
+from app.domains.providers.registry import provider_registry
 
 
 class MailingRepository:
@@ -15,22 +17,40 @@ class MailingRepository:
 
     async def create(self, payload: MailingCreate, created_by_id: UUID) -> Mailing:
         mailing = Mailing(
+            provider_code=payload.provider_code,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
-            messages=[
-                Message(
-                    msisdn=message.msisdn,
-                    text=message.text,
-                )
-                for message in payload.messages
-            ]
         )
         self.session.add(mailing)
         await self.session.flush()
+
+        provider = await provider_registry.get(payload.provider_code)
+
+        for offset in range(0, len(payload.messages), provider.max_batch_size):
+            chunk = payload.messages[offset : offset + provider.max_batch_size]
+            batch = MessagesBatch(
+                mailing_id=mailing.id,
+                provider_code=payload.provider_code,
+                messages_count=len(chunk),
+            )
+            self.session.add(batch)
+            await self.session.flush()
+
+            for item in chunk:
+                message = Message(
+                    msisdn=item.msisdn,
+                    text=item.text,
+                    batch_id=batch.id,
+                    mailing_id=mailing.id,
+                )
+                self.session.add(message)
+
+        await self.session.commit()
         await self.session.refresh(
             mailing,
-            attribute_names=["messages", "created_by", "updated_by"],
+            attribute_names=["messages", "batches", "created_by", "updated_by"],
         )
+
         return mailing
 
     async def get_by_id(self, mailing_id: UUID) -> Mailing | None:
@@ -77,20 +97,17 @@ class MailingRepository:
         result = await self.session.execute(query)
         return result.scalar_one()
 
-    async def update(
-        self, mailing_id: UUID, *, updated_by_id: UUID
-    ) -> Mailing | None:
+    async def update(self, mailing_id: UUID, *, updated_by_id: UUID) -> Mailing | None:
         mailing = await self.get_by_id(mailing_id)
         if mailing is None:
             return None
 
         mailing.updated_by_id = updated_by_id
-        await self.session.flush()
+        await self.session.commit()
         await self.session.refresh(
             mailing,
             attribute_names=["messages", "created_by", "updated_by"],
         )
-        return mailing
 
     async def delete(self, mailing_id: UUID) -> bool:
         mailing = await self.get_by_id(mailing_id)
@@ -100,3 +117,25 @@ class MailingRepository:
         await self.session.delete(mailing)
         await self.session.flush()
         return True
+
+
+class MessagesBatchRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list(
+        self, mailing_id: UUID, status: MessagesBatchStatus | None = None
+    ) -> Sequence[MessagesBatch]:
+        query = (
+            select(MessagesBatch)
+            .options(
+                selectinload(MessagesBatch.mailing),
+                selectinload(MessagesBatch.messages),
+            )
+            .where(MessagesBatch.mailing_id == mailing_id)
+            .order_by(MessagesBatch.created_at.desc())
+        )
+        if status:
+            query = query.where(MessagesBatch.status == status)
+        result = await self.session.execute(query)
+        return result.scalars().all()
