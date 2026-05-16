@@ -39,6 +39,7 @@ class MessageRead(BaseModel):
     msisdn: str
     text: str
     status: MessageStatus
+    batch_id: UUID
 
 
 class MailingRead(BaseModel):

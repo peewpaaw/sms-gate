@@ -4,6 +4,7 @@ from sqlalchemy import Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin
+from app.domains.auth.models import User
 from .enums import MailingStatus, MessageStatus, MessagesBatchStatus
 
 
@@ -32,8 +33,8 @@ class Mailing(Base, TimestampedMixin):
         "Message", back_populates="mailing", cascade="all, delete-orphan"
     )
     batches = relationship("MessagesBatch", back_populates="mailing")
-    created_by = relationship("User", foreign_keys=[created_by_id])
-    updated_by = relationship("User", foreign_keys=[updated_by_id])
+    created_by = relationship(User, foreign_keys=[created_by_id])
+    updated_by = relationship(User, foreign_keys=[updated_by_id])
 
 
 class Message(Base, TimestampedMixin):

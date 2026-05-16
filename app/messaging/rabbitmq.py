@@ -10,6 +10,17 @@ async def connect() -> AbstractRobustConnection:
 
 
 async def setup_topology(channel: AbstractChannel) -> None:
+    """
+    Exchanges: 
+    - send.x
+    - status.x
+
+    Queues:
+    - send.q - for sending messages
+    - send.retry.q - for retrying messages
+    - status.q - for checking status of messages
+    - status.retry.q - for retrying status checks
+    """
     send_exchange = await channel.declare_exchange(
         topology.SEND_EXCHANGE, aio_pika.ExchangeType.DIRECT, durable=True
     )

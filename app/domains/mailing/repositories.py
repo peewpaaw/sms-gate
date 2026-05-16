@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MessagesBatchStatus
+from app.domains.mailing.enums import MessageStatus, MessagesBatchStatus
 from app.domains.mailing.models import Mailing, MailingStatus, Message, MessagesBatch
 from app.domains.mailing.schemas import MailingCreate
 from app.domains.providers.registry import provider_registry
@@ -139,3 +139,27 @@ class MessagesBatchRepository:
             query = query.where(MessagesBatch.status == status)
         result = await self.session.execute(query)
         return result.scalars().all()
+
+    async def list_for_publishing(self, *, limit: int = 100) -> Sequence[MessagesBatch]:
+        """Return created batches ready to be published by a worker.
+
+        Rows are locked with SKIP LOCKED so multiple publisher processes can
+        work concurrently without taking the same batch.
+        """
+        query = (
+            select(MessagesBatch)
+            .options(selectinload(MessagesBatch.messages))
+            .where(MessagesBatch.status == MessagesBatchStatus.CREATED)
+            .order_by(MessagesBatch.created_at.asc())
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def mark_as_queued(self, batch: MessagesBatch) -> None:
+        """Mark a published batch and its messages as queued."""
+        batch.status = MessagesBatchStatus.QUEUED
+        for message in batch.messages:
+            message.status = MessageStatus.QUEUED
+        await self.session.flush()
