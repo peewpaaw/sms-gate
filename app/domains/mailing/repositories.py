@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MessageStatus, MessagesBatchStatus
+from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.models import Mailing, MailingStatus, Message, MessagesBatch
 from app.domains.mailing.schemas import MailingCreate
 from app.domains.providers.registry import provider_registry
@@ -156,10 +156,3 @@ class MessagesBatchRepository:
         )
         result = await self.session.execute(query)
         return result.scalars().all()
-
-    async def mark_as_queued(self, batch: MessagesBatch) -> None:
-        """Mark a published batch and its messages as queued."""
-        batch.status = MessagesBatchStatus.QUEUED
-        for message in batch.messages:
-            message.status = MessageStatus.QUEUED
-        await self.session.flush()

@@ -13,6 +13,7 @@ from aio_pika.abc import AbstractChannel
 
 from app.db.session import async_session_factory
 from app.domains.mailing.repositories import MessagesBatchRepository
+from app.domains.mailing.services import MailingQueueingService
 from app.messaging.rabbitmq import connect, setup_topology
 from app.messaging.schemas import SendBatchTask
 from app.messaging import topology
@@ -75,8 +76,11 @@ async def publish_once(channel: AbstractChannel) -> int:
     """
     async with async_session_factory() as session:
         repository = MessagesBatchRepository(session)
+        service = MailingQueueingService(session)
         async with session.begin():
             batches = await repository.list_for_publishing(limit=PUBLISH_BATCH_SIZE)
+            mailing_ids = set()
+
             for batch in batches:
                 task = SendBatchTask(
                     mailing_id=batch.mailing_id,
@@ -84,7 +88,11 @@ async def publish_once(channel: AbstractChannel) -> int:
                     provider_code=batch.provider_code,
                 )
                 await _publish_send_batch(channel, task)
-                await repository.mark_as_queued(batch)
+                await service.mark_batch_as_queued(batch)
+                mailing_ids.add(batch.mailing_id)
+
+            for mailing_id in mailing_ids:
+                await service.mark_mailing_as_queued(mailing_id)
 
             return len(batches)
 
