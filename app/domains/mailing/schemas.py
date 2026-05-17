@@ -38,6 +38,7 @@ class MessageRead(BaseModel):
     id: UUID
     msisdn: str
     text: str
+    provider_message_id: str | None
     status: MessageStatus
     batch_id: UUID
 

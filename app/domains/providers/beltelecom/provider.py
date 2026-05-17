@@ -29,9 +29,6 @@ class BeltelecomProvider:
         if not batch.messages:
             raise ProviderTemporaryError("Batch is empty")
 
-        # TODO: отправляем сообщения по одиночке, игнорируя batch
-        # batch у белтелекома - это массив номеров (10 шт.), НО общий текст и время оптравки.
-
         csrf_token = await self._client.get_csrf_token()
         results: list[ProviderOneMessageSendResponse] = []
 

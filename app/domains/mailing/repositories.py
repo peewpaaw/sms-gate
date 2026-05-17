@@ -156,3 +156,14 @@ class MessagesBatchRepository:
         )
         result = await self.session.execute(query)
         return result.scalars().all()
+
+    async def get_for_sending(self, batch_id: UUID) -> MessagesBatch | None:
+        """Return one locked batch with messages for send processing."""
+        query = (
+            select(MessagesBatch)
+            .options(selectinload(MessagesBatch.messages))
+            .where(MessagesBatch.id == batch_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()

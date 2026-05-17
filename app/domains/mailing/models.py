@@ -46,6 +46,7 @@ class Message(Base, TimestampedMixin):
     )
     msisdn: Mapped[str] = mapped_column(String(15), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[MessageStatus] = mapped_column(
         Enum(
             MessageStatus,
