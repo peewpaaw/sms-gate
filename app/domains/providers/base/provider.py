@@ -20,7 +20,7 @@ class ProviderMessage:
     message_id: UUID
     msisdn: str
     text: str
-    send_on: datetime
+    send_on: datetime | None
 
 
 @dataclass(frozen=True)

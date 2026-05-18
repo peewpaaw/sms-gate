@@ -3,6 +3,7 @@ from .base.provider import (
     ProviderBatch,
     ProviderOneMessageSendResponse,
     ProviderSendResponse,
+    ProviderStatusResponse,
 )
 
 
@@ -20,3 +21,6 @@ class FakeProvider:
         ]
 
         return ProviderSendResponse(status=True, messages=results)
+
+    async def get_status(self, external_id: str) -> ProviderStatusResponse:
+        return ProviderStatusResponse(status="sent", messages_status=[])

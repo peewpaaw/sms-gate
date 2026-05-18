@@ -14,6 +14,7 @@ from app.domains.providers.registry import provider_registry
 class MessageCreate(BaseModel):
     msisdn: str = Field(min_length=9, max_length=16)
     text: str = Field(min_length=1, max_length=1600)
+    send_on: datetime | None = None
 
     @field_validator("msisdn")
     @classmethod
@@ -38,7 +39,8 @@ class MessageRead(BaseModel):
     id: UUID
     msisdn: str
     text: str
-    provider_message_id: str | None
+    send_on: datetime | None
+    external_id: str | None
     status: MessageStatus
     batch_id: UUID
 

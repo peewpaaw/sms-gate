@@ -57,7 +57,7 @@ def _build_provider_batch(batch_messages: list) -> ProviderBatch:
                 message_id=message.id,
                 msisdn=message.msisdn,
                 text=message.text,
-                send_on=utcnow(),
+                send_on=message.send_on,
             )
             for message in batch_messages
         ]
@@ -85,7 +85,7 @@ async def send_task(task: SendBatchTask) -> None:
                     "Send batch has unexpected status",
                     extra={"task": str(task), "status": batch.status},
                 )
-                return
+                raise ProviderTemporaryError("Batch with unexpected status")
 
             provider = await provider_registry.get(task.provider_code)
             provider_batch = _build_provider_batch(batch.messages)
@@ -102,12 +102,12 @@ async def send_task(task: SendBatchTask) -> None:
                 logger.error("Provider returned failed send response", extra={"task": str(task)})
                 return
 
-            response_message_ids = {item.message_id for item in response.messages}
-            batch_message_ids = {message.id for message in batch.messages}
-            if response_message_ids != batch_message_ids:
-                raise ProviderTemporaryError("Provider response does not match batch messages")
-
-            await service.mark_batch_as_submitted(batch, response)
+            is_full_response = await service.apply_send_response(batch, response)
+            if not is_full_response:
+                logger.error(
+                    "Provider response does not match batch messages",
+                    extra={"task": str(task)},
+                )
 
 
 async def handle_message(

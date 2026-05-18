@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin
@@ -32,7 +33,9 @@ class Mailing(Base, TimestampedMixin):
     messages = relationship(
         "Message", back_populates="mailing", cascade="all, delete-orphan"
     )
-    batches = relationship("MessagesBatch", back_populates="mailing")
+    batches = relationship(
+        "MessagesBatch", back_populates="mailing", cascade="all, delete-orphan"
+    )
     created_by = relationship(User, foreign_keys=[created_by_id])
     updated_by = relationship(User, foreign_keys=[updated_by_id])
 
@@ -46,7 +49,10 @@ class Message(Base, TimestampedMixin):
     )
     msisdn: Mapped[str] = mapped_column(String(15), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    send_on: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[MessageStatus] = mapped_column(
         Enum(
             MessageStatus,
@@ -72,6 +78,7 @@ class MessagesBatch(Base, TimestampedMixin):
         ForeignKey("mailing.id", ondelete="CASCADE"), nullable=False
     )
     provider_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[MessagesBatchStatus] = mapped_column(
         Enum(
             MessagesBatchStatus,

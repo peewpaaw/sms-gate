@@ -1,14 +1,13 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.models import Mailing, MailingStatus, Message, MessagesBatch
 from app.domains.mailing.schemas import MailingCreate
-from app.domains.providers.registry import provider_registry
 
 
 class MailingRepository:
@@ -24,32 +23,17 @@ class MailingRepository:
         self.session.add(mailing)
         await self.session.flush()
 
-        provider = await provider_registry.get(payload.provider_code)
-
-        for offset in range(0, len(payload.messages), provider.max_batch_size):
-            chunk = payload.messages[offset : offset + provider.max_batch_size]
-            batch = MessagesBatch(
+        for item in payload.messages:
+            message = Message(
+                msisdn=item.msisdn,
+                text=item.text,
+                send_on=item.send_on,
                 mailing_id=mailing.id,
-                provider_code=payload.provider_code,
-                messages_count=len(chunk),
             )
-            self.session.add(batch)
-            await self.session.flush()
+            self.session.add(message)
 
-            for item in chunk:
-                message = Message(
-                    msisdn=item.msisdn,
-                    text=item.text,
-                    batch_id=batch.id,
-                    mailing_id=mailing.id,
-                )
-                self.session.add(message)
-
-        await self.session.commit()
-        await self.session.refresh(
-            mailing,
-            attribute_names=["messages", "batches", "created_by", "updated_by"],
-        )
+        await self.session.flush()
+        await self.session.refresh(mailing, attribute_names=["messages"])
 
         return mailing
 
@@ -58,6 +42,7 @@ class MailingRepository:
             select(Mailing)
             .options(
                 selectinload(Mailing.messages),
+                selectinload(Mailing.batches),
                 selectinload(Mailing.created_by),
                 selectinload(Mailing.updated_by),
             )
@@ -77,6 +62,7 @@ class MailingRepository:
             select(Mailing)
             .options(
                 selectinload(Mailing.messages),
+                selectinload(Mailing.batches),
                 selectinload(Mailing.created_by),
                 selectinload(Mailing.updated_by),
             )
@@ -167,3 +153,12 @@ class MessagesBatchRepository:
         )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
+
+    async def delete_by_mailing_id(self, mailing_id: UUID) -> None:
+        query = (
+            delete(MessagesBatch)
+            .where(MessagesBatch.mailing_id == mailing_id)
+            .execution_options(synchronize_session=False)
+        )
+        await self.session.execute(query)
+        await self.session.flush()

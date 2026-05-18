@@ -1,10 +1,13 @@
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 
 from app.api.pagination import Page
 from app.deps import SessionDep, CurrentUserDep
 from app.domains.mailing.filters import MailingFilter
+from app.domains.mailing.services import MailingBatchingService
 from .repositories import MailingRepository
 from .schemas import MailingCreate, MailingRead
 
@@ -49,3 +52,48 @@ async def create_mailing(
     mailing_repository = MailingRepository(session)
     mailing = await mailing_repository.create(payload, created_by_id=current_user.id)
     return MailingRead.model_validate(mailing)
+
+
+@router.get("/{mailing_id}")
+async def get_mailing(
+    session: SessionDep,
+    mailing_id: UUID,
+    _current_user: CurrentUserDep,
+) -> MailingRead:
+    mailing_repository = MailingRepository(session)
+    mailing = await mailing_repository.get_by_id(mailing_id)
+    if mailing is None:
+        raise HTTPException(status_code=404, detail="Mailing not found")
+
+    return MailingRead.model_validate(mailing)
+
+
+@router.delete("/{mailing_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_mailing(
+    session: SessionDep,
+    _current_user: CurrentUserDep,
+    mailing_id: UUID,
+) -> None:
+    mailing_repository = MailingRepository(session)
+    deleted = await mailing_repository.delete(mailing_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Mailing not found")
+
+    await session.commit()
+
+
+@router.post("/{mailing_id}/send")
+async def send_mailing(
+    session: SessionDep,
+    mailing_id: UUID,
+    _current_user: CurrentUserDep,
+) -> None:
+    """Разбиваем на батчи -> prepared -> ставится в очередь паблишером"""
+    mailing_repository = MailingRepository(session)
+    mailing = await mailing_repository.get_by_id(mailing_id)
+    if mailing is None:
+        raise HTTPException(status_code=404, detail="Mailing not found")
+        
+    batching_service = MailingBatchingService(session)
+    await batching_service.batch_mailing(mailing)
+    return JSONResponse(status_code=200, content={"message": "Mailing batched"})

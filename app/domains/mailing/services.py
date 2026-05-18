@@ -7,7 +7,43 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.mailing.enums import MailingStatus, MessageStatus, MessagesBatchStatus
 from app.domains.mailing.models import Mailing, MessagesBatch
+from app.domains.mailing.repositories import MessagesBatchRepository
 from app.domains.providers.base.provider import ProviderSendResponse
+from app.domains.providers.registry import provider_registry
+
+
+class MailingBatchingService:
+    """Split mailing messages into provider-sized batches."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def batch_mailing(self, mailing: Mailing) -> None:
+        """Create batches for a mailing and assign messages to them."""
+        batch_repository = MessagesBatchRepository(self.session)
+        await batch_repository.delete_by_mailing_id(mailing.id)
+
+        provider = await provider_registry.get(mailing.provider_code)
+        messages = mailing.messages
+
+        for offset in range(0, len(messages), provider.max_batch_size):
+            chunk = messages[offset : offset + provider.max_batch_size]
+            batch = MessagesBatch(
+                mailing_id=mailing.id,
+                provider_code=mailing.provider_code,
+                status=MessagesBatchStatus.CREATED,
+                messages_count=len(chunk),
+            )
+            self.session.add(batch)
+            await self.session.flush()
+
+            for item in chunk:
+                item.batch_id = batch.id
+                item.status = MessageStatus.PREPARED
+
+        await self.session.flush()
+
+        mailing.status = MailingStatus.PREPARED
 
 
 class MailingQueueingService:
@@ -50,20 +86,35 @@ class MailingSendingService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def mark_batch_as_submitted(
+    async def apply_send_response(
         self, batch: MessagesBatch, response: ProviderSendResponse
-    ) -> None:
-        """Store provider ids and mark a sent batch as submitted."""
-        provider_message_ids = {
-            item.message_id: item.external_id for item in response.messages
-        }
+    ) -> bool:
+        """Store provider ids and mark messages that provider accepted.
 
-        batch.status = MessagesBatchStatus.SUBMITTED
+        Returns True when provider returned a response for every message in the batch.
+        Partial responses are persisted as well, because retrying accepted messages can
+        duplicate SMS delivery.
+        """
+        external_ids = {item.message_id: item.external_id for item in response.messages}
+        batch_message_ids = {message.id for message in batch.messages}
+        is_full_response = set(external_ids) == batch_message_ids
+
+        batch.status = (
+            MessagesBatchStatus.SUBMITTED
+            if is_full_response
+            else MessagesBatchStatus.PARTIALLY_SUBMITTED
+        )
         for message in batch.messages:
-            message.provider_message_id = provider_message_ids.get(message.id)
+            external_id = external_ids.get(message.id)
+            if external_id is None:
+                message.status = MessageStatus.UNKNOWN
+                continue
+
+            message.external_id = external_id
             message.status = MessageStatus.SUBMITTED
 
         await self.session.flush()
+        return is_full_response
 
     async def mark_batch_as_failed(self, batch: MessagesBatch) -> None:
         """Mark a batch and its queued messages as failed."""

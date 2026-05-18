@@ -3,11 +3,14 @@ from enum import StrEnum
 
 class MailingStatus(StrEnum):
     CREATED = "created"
+    PREPARED = "prepared"
     QUEUED = "queued"
+    SUBMITTED = "submitted"
 
 
 class MessageStatus(StrEnum):
     CREATED = "created"
+    PREPARED = "prepared"
     QUEUED = "queued"
     SUBMITTED = "submitted"
     DELIVERED = "delivered"
@@ -20,6 +23,7 @@ class MessagesBatchStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
     SUBMITTED = "sent"
+    PARTIALLY_SUBMITTED = "partially_submitted"
     COMPLETED = "completed"
     PARTIALLY_FAILED = "partially_failed"
     FAILED = "failed"
