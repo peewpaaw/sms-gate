@@ -67,11 +67,10 @@ def _build_provider_batch(batch_messages: list) -> ProviderBatch:
 async def send_task(task: SendBatchTask) -> None:
     """Send one queued batch through its provider and persist the result."""
     async with async_session_factory() as session:
-        repository = MessagesBatchRepository(session)
         service = MailingSendingService(session)
 
         async with session.begin():
-            batch = await repository.get_for_sending(task.batch_id)
+            batch = await service.claim_for_sending(task.batch_id)
             if batch is None:
                 logger.warning("Send batch not found", extra={"task": str(task)})
                 return

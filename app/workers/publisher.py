@@ -13,7 +13,7 @@ from aio_pika.abc import AbstractChannel
 
 from app.db.session import async_session_factory
 from app.domains.mailing.repositories import MessagesBatchRepository
-from app.domains.mailing.services import MailingQueueingService
+from app.domains.mailing.services.queueing import MailingQueueingService
 from app.messaging.rabbitmq import connect, setup_topology
 from app.messaging.schemas import SendBatchTask
 from app.messaging import topology
@@ -75,10 +75,9 @@ async def publish_once(channel: AbstractChannel) -> int:
     later, so the consumer must be idempotent.
     """
     async with async_session_factory() as session:
-        repository = MessagesBatchRepository(session)
         service = MailingQueueingService(session)
         async with session.begin():
-            batches = await repository.list_for_publishing(limit=PUBLISH_BATCH_SIZE)
+            batches = await service.claim_for_queueing(limit=PUBLISH_BATCH_SIZE)
             mailing_ids = set()
 
             for batch in batches:
