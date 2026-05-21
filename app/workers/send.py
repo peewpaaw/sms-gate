@@ -8,11 +8,9 @@ import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractIncomingMessage
 from pydantic import ValidationError
 
-from app.db.base import utcnow
 from app.db.session import async_session_factory
 from app.domains.mailing.enums import MessagesBatchStatus
-from app.domains.mailing.repositories import MessagesBatchRepository
-from app.domains.mailing.services import MailingSendingService
+from app.domains.mailing.services.sending import MailingSendingService
 from app.domains.providers.base.exceptions import (
     ProviderPermanentError,
     ProviderTemporaryError,
@@ -20,6 +18,7 @@ from app.domains.providers.base.exceptions import (
 from app.domains.providers.base.provider import ProviderBatch, ProviderMessage
 from app.domains.providers.registry import provider_registry
 from app.messaging import topology
+from app.messaging.exceptions import BatchWithUnexpectedStatus
 from app.messaging.rabbitmq import connect, setup_topology
 from app.messaging.schemas import SendBatchTask
 
@@ -80,11 +79,10 @@ async def send_task(task: SendBatchTask) -> None:
                 return
 
             if batch.status != MessagesBatchStatus.QUEUED:
-                logger.warning(
-                    "Send batch has unexpected status",
+                raise BatchWithUnexpectedStatus(
+                    "Batch with unexpected status",
                     extra={"task": str(task), "status": batch.status},
                 )
-                raise ProviderTemporaryError("Batch with unexpected status")
 
             provider = await provider_registry.get(task.provider_code)
             provider_batch = _build_provider_batch(batch.messages)
@@ -93,12 +91,16 @@ async def send_task(task: SendBatchTask) -> None:
                 response = await provider.send(provider_batch)
             except ProviderPermanentError:
                 await service.mark_batch_as_failed(batch)
-                logger.exception("Provider rejected send batch", extra={"task": str(task)})
+                logger.exception(
+                    "Provider rejected send batch", extra={"task": str(task)}
+                )
                 return
 
             if not response.status:
                 await service.mark_batch_as_failed(batch)
-                logger.error("Provider returned failed send response", extra={"task": str(task)})
+                logger.error(
+                    "Provider returned failed send response", extra={"task": str(task)}
+                )
                 return
 
             is_full_response = await service.apply_send_response(batch, response)
@@ -122,8 +124,10 @@ async def handle_message(
 
     try:
         await send_task(task)
-    except ProviderTemporaryError:
-        logger.exception("Temporary provider error", extra={"task": str(task)})
+    except (ProviderTemporaryError, BatchWithUnexpectedStatus) as e:
+        logger.warning(
+            "Task failed, will be retried", extra={"task": str(task), "error": e}
+        )
         await _publish_retry(channel, task)
         await message.ack()
         return

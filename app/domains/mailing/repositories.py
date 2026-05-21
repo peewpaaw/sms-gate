@@ -32,7 +32,7 @@ class MailingRepository:
             )
             self.session.add(message)
 
-        await self.session.flush()
+        await self.session.commit()
         await self.session.refresh(mailing, attribute_names=["messages"])
 
         return mailing
@@ -125,23 +125,6 @@ class MessagesBatchRepository:
             query = query.where(MessagesBatch.status == status)
         result = await self.session.execute(query)
         return result.scalars().all()
-
-    # async def list_for_publishing(self, *, limit: int = 100) -> Sequence[MessagesBatch]:
-    #     """Return created batches ready to be published by a worker.
-
-    #     Rows are locked with SKIP LOCKED so multiple publisher processes can
-    #     work concurrently without taking the same batch.
-    #     """
-    #     query = (
-    #         select(MessagesBatch)
-    #         .options(selectinload(MessagesBatch.messages))
-    #         .where(MessagesBatch.status == MessagesBatchStatus.CREATED)
-    #         .order_by(MessagesBatch.created_at.asc())
-    #         .limit(limit)
-    #         .with_for_update(skip_locked=True)
-    #     )
-    #     result = await self.session.execute(query)
-    #     return result.scalars().all()
 
     async def get_for_sending(self, batch_id: UUID) -> MessagesBatch | None:
         """Return one locked batch with messages for send processing."""

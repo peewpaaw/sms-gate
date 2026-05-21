@@ -54,19 +54,6 @@ async def _publish_send_batch(channel: AbstractChannel, task: SendBatchTask) -> 
     )
 
 
-async def publish_send_batch(task: SendBatchTask) -> None:
-    """Publish one send task using a short-lived RabbitMQ connection."""
-    connection = await connect()
-    async with connection:
-        channel = await connection.channel()
-        await setup_topology(channel)
-        try:
-            await _publish_send_batch(channel, task)
-        except OSError:
-            logger.exception("Failed to publish send mailing task", extra={"task": str(task)})
-            raise
-
-
 async def publish_once(channel: AbstractChannel) -> int:
     """Publish one locked page of created batches and mark them as queued.
 
@@ -88,10 +75,11 @@ async def publish_once(channel: AbstractChannel) -> int:
                 )
                 await _publish_send_batch(channel, task)
                 await service.mark_batch_as_queued(batch)
+                await session.commit()
                 mailing_ids.add(batch.mailing_id)
 
-            for mailing_id in mailing_ids:
-                await service.mark_mailing_as_queued(mailing_id)
+            # for mailing_id in mailing_ids:
+            #     await service.mark_mailing_as_queued(mailing_id)
 
             return len(batches)
 

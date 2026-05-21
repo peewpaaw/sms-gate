@@ -12,7 +12,7 @@ from .client import BeltelecomClient
 
 class BeltelecomProvider:
     code = "beltelecom"
-    max_batch_size = 10
+    max_batch_size = 1
 
     def __init__(
         self, base_url: str, username: str, password: str, timeout_sec: float = 15.0
@@ -33,6 +33,13 @@ class BeltelecomProvider:
         results: list[ProviderOneMessageSendResponse] = []
 
         for message in batch.messages:
+            if message.external_id:
+                result = ProviderOneMessageSendResponse(
+                    message_id=message.message_id, external_id=message.external_id
+                )
+                results.append(result)
+                continue
+
             payload = {
                 "webform_id": "sms_rassylka",
                 "name": "",  # TODO: в описании есть понятие "Заголовок сообщения". У А1 - нет.

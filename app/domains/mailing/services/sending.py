@@ -1,7 +1,9 @@
 """Domain services for mailing state transitions."""
 
+from uuid import UUID
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import PassiveFlag
+from sqlalchemy.orm import selectinload
 
 from app.domains.mailing.enums import MessageStatus, MessagesBatchStatus
 from app.domains.mailing.models import MessagesBatch
@@ -27,15 +29,17 @@ class MailingSendingService:
         batch_message_ids = {message.id for message in batch.messages}
         is_full_response = set(external_ids) == batch_message_ids
 
-        batch.status = (
-            MessagesBatchStatus.SUBMITTED
-            if is_full_response
-            else MessagesBatchStatus.PARTIALLY_SUBMITTED
-        )
+        if is_full_response:
+            batch.status = MessagesBatchStatus.SUBMITTED
+        elif external_ids:
+            batch.status = MessagesBatchStatus.PARTIALLY_SUBMITTED
+        else:
+            batch.status = MessagesBatchStatus.FAILED
+
         for message in batch.messages:
             external_id = external_ids.get(message.id)
             if external_id is None:
-                message.status = MessageStatus.UNKNOWN
+                message.status = MessageStatus.FAILED
                 continue
 
             message.external_id = external_id
@@ -53,6 +57,13 @@ class MailingSendingService:
 
         await self.session.flush()
 
-    async def claim_for_sending(self, batch: MessagesBatch) -> None:
+    async def claim_for_sending(self, batch_id: UUID) -> MessagesBatch | None:
         """Claim a batch for sending."""
-        pass
+        query = (
+            select(MessagesBatch)
+            .options(selectinload(MessagesBatch.messages))
+            .where(MessagesBatch.id == batch_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()

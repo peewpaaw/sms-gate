@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from app.api.pagination import Page
 from app.deps import SessionDep, CurrentUserDep
 from app.domains.mailing.filters import MailingFilter
-from app.domains.mailing.services import MailingBatchingService
+from app.domains.mailing.services.batching import MailingBatchingService
 from .repositories import MailingRepository
 from .schemas import MailingCreate, MailingRead
 
@@ -93,7 +93,7 @@ async def send_mailing(
     mailing = await mailing_repository.get_by_id(mailing_id)
     if mailing is None:
         raise HTTPException(status_code=404, detail="Mailing not found")
-        
+
     batching_service = MailingBatchingService(session)
     await batching_service.batch_mailing(mailing)
     return JSONResponse(status_code=200, content={"message": "Mailing batched"})

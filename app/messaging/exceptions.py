@@ -1,0 +1,2 @@
+class BatchWithUnexpectedStatus(Exception):
+    pass

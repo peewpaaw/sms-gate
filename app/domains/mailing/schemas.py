@@ -42,7 +42,7 @@ class MessageRead(BaseModel):
     send_on: datetime | None
     external_id: str | None
     status: MessageStatus
-    batch_id: UUID
+    batch_id: UUID | None = None
 
 
 class MailingRead(BaseModel):
