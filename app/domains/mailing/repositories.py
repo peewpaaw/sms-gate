@@ -1,12 +1,18 @@
 from collections.abc import Sequence
 from uuid import UUID
-
+from datetime import datetime, timezone, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MessagesBatchStatus
-from app.domains.mailing.models import Mailing, MailingStatus, Message, MessagesBatch
+from app.domains.mailing.enums import MailingOutboxStatus, MessagesBatchStatus
+from app.domains.mailing.models import (
+    Mailing,
+    MailingStatus,
+    Message,
+    MessagesBatch,
+    MailingOutbox,
+)
 from app.domains.mailing.schemas import MailingCreate
 
 
@@ -144,4 +150,39 @@ class MessagesBatchRepository:
             .execution_options(synchronize_session=False)
         )
         await self.session.execute(query)
+        await self.session.flush()
+
+
+class MailingOutboxRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def claim_for_publishing(
+        self, *, limit: int = 100
+    ) -> Sequence[MailingOutbox]:
+        query = (
+            select(MailingOutbox)
+            .where(
+                MailingOutbox.status == MailingOutboxStatus.PENDING
+                or (
+                    MailingOutbox.status == MailingOutboxStatus.FAILED
+                    and MailingOutbox.next_retry_at < (datetime.now(timezone.utc))
+                )
+            )
+            .order_by(MailingOutbox.created_at.asc())
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def mark_as_published(self, outbox: MailingOutbox) -> None:
+        outbox.status = MailingOutboxStatus.PUBLISHED
+        self.session.add(outbox)
+        await self.session.flush()
+
+    async def mark_as_failed(self, outbox: MailingOutbox) -> None:
+        outbox.status = MailingOutboxStatus.FAILED
+        outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=1)
+        self.session.add(outbox)
         await self.session.flush()

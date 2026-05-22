@@ -75,7 +75,7 @@ async def publish_once(channel: AbstractChannel) -> int:
                 )
                 await _publish_send_batch(channel, task)
                 await service.mark_batch_as_queued(batch)
-                await session.commit()
+                await session.flush()
                 mailing_ids.add(batch.mailing_id)
 
             # for mailing_id in mailing_ids:

@@ -27,3 +27,13 @@ class MessagesBatchStatus(StrEnum):
     COMPLETED = "completed"
     PARTIALLY_FAILED = "partially_failed"
     FAILED = "failed"
+
+
+class MailingOutboxEventType(StrEnum):
+    SEND_BATCH = "mailing.send"
+
+
+class MailingOutboxStatus(StrEnum):
+    PENDING = "pending"
+    PUBLISHED = "published"
+    FAILED = "failed"
