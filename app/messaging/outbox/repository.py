@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
+from uuid import UUID
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.messaging.outbox.enums import OutboxStatus
@@ -15,6 +16,11 @@ RETRY_DELAY = 60
 class OutboxRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def get_by_id(self, id: UUID) -> Outbox | None:
+        query = select(Outbox).where(Outbox.id == id)
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
 
     async def create(self, payload: OutboxCreate) -> Outbox:
         outbox = Outbox(

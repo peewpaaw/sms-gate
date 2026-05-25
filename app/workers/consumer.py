@@ -36,14 +36,14 @@ def _decode_task(message: AbstractIncomingMessage) -> SendBatchTask:
 
 async def _publish_retry(channel: AbstractChannel, task: SendBatchTask) -> None:
     """Publish a send task to the delayed retry queue."""
-    exchange = await channel.get_exchange(topology.SEND_EXCHANGE)
+    exchange = await channel.get_exchange(topology.MAILING_EXCHANGE)
     await exchange.publish(
         aio_pika.Message(
             body=task.model_dump_json().encode("utf-8"),
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             content_type="application/json",
         ),
-        routing_key=topology.SEND_RETRY_ROUTING_KEY,
+        routing_key=topology.SEND_BATCH_RETRY_ROUTING_KEY,
     )
 
 
@@ -173,7 +173,7 @@ async def consume() -> None:
                 await channel.set_qos(prefetch_count=PREFETCH_COUNT)
                 await setup_topology(channel)
 
-                queue = await channel.get_queue(topology.SEND_QUEUE)
+                queue = await channel.get_queue(topology.SEND_BATCH_QUEUE)
                 await queue.consume(lambda message: handle_message(message, channel))
                 logger.info("Send consumer started")
                 await asyncio.Future()

@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.mailing.enums import MessageStatus, MessagesBatchStatus
 from app.domains.mailing.models import Mailing, MessagesBatch
-from app.domains.mailing.schemas import BatchTask
+from app.domains.mailing.schemas import SendBatchTask
 from app.domains.providers.registry import provider_registry
 
 from app.messaging.outbox.enums import OutboxEventType
@@ -41,7 +41,7 @@ class MailingPublishingService:
             outbox = await self.outbox_repository.create(
                 OutboxCreate(
                     event_type=OutboxEventType.SEND_BATCH,
-                    payload=BatchTask(
+                    payload=SendBatchTask(
                         mailing_id=mailing.id,
                         batch_id=batch.id,
                         provider_code=mailing.provider_code,

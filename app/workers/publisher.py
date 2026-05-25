@@ -48,7 +48,7 @@ async def _publish_send_batch(channel: AbstractChannel, outbox: Outbox) -> None:
     """Publish a single batch send task to the send queue."""
     await _publish(
         channel=channel,
-        exchange_name=topology.SEND_EXCHANGE,
+        exchange_name=topology.MAILING_EXCHANGE,
         routing_key=topology.SEND_BATCH_ROUTING_KEY,
         payload=outbox.payload,
     )

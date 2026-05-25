@@ -63,12 +63,7 @@ class MessagesBatchRead(BaseModel):
     status: MessagesBatchStatus
 
 
-class BatchTask(BaseModel):
+class SendBatchTask(BaseModel):
     mailing_id: UUID
     batch_id: UUID
     provider_code: str
-
-
-# class MailingOutboxCreate(BaseModel):
-#     event_type: MailingOutboxEventType
-#     payload: dict
