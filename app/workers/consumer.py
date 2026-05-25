@@ -18,7 +18,6 @@ from app.domains.providers.base.exceptions import (
 from app.domains.providers.base.provider import ProviderBatch, ProviderMessage
 from app.domains.providers.registry import provider_registry
 from app.messaging import topology
-from app.messaging.exceptions import BatchWithUnexpectedStatus
 from app.messaging.rabbitmq import connect, setup_topology
 from app.messaging.schemas import SendBatchTask
 
@@ -66,44 +65,69 @@ def _build_provider_batch(batch_messages: list) -> ProviderBatch:
 async def send_task(task: SendBatchTask) -> None:
     """Send one queued batch through its provider and persist the result."""
     async with async_session_factory() as session:
-        service = MailingSendingService(session)
-
         async with session.begin():
+            service = MailingSendingService(session)
             batch = await service.claim_for_sending(task.batch_id)
+
+            logger.info("claimed batch", extra={"task": str(task), "batch": batch})
+
             if batch is None:
-                logger.warning("Send batch not found", extra={"task": str(task)})
+                logger.warning("Batch not found", extra={"task": str(task)})
                 return
 
-            if batch.status == MessagesBatchStatus.SUBMITTED:
-                logger.info("Send batch already submitted", extra={"task": str(task)})
-                return
-
+            # Некорректный статус батча
             if batch.status != MessagesBatchStatus.QUEUED:
-                raise BatchWithUnexpectedStatus(
-                    "Batch with unexpected status",
-                    extra={"task": str(task), "status": batch.status},
-                )
-
-            provider = await provider_registry.get(task.provider_code)
-            provider_batch = _build_provider_batch(batch.messages)
-
-            try:
-                response = await provider.send(provider_batch)
-            except ProviderPermanentError:
-                await service.mark_batch_as_failed(batch)
-                logger.exception(
-                    "Provider rejected send batch", extra={"task": str(task)}
-                )
+                logger.warning("Batch not in expected status: %s", batch.status, extra={"task": str(task)})
                 return
+
+            logger.info("marking batch as sending", extra={"task": str(task), "batch": batch})
+            await service.mark_as_sending(batch)
+            
+            provider_batch = _build_provider_batch(batch.messages)
+            batch_id = batch.id
+
+    # Все ок: обрабатываем батч (в статусе QUEUED -> SENDING)
+    provider = await provider_registry.get(task.provider_code)
+    
+    try:
+        logger.info("sending batch to provider", extra={"task": str(task)})
+        response = await provider.send(provider_batch)
+    except ProviderPermanentError:
+        # Устанавливаем статус FAILED
+        # return -> ack
+        logger.info("marking batch as failed", extra={"task": str(task), "batch": batch})
+        async with async_session_factory() as session:
+            async with session.begin():
+                await MailingSendingService(session).mark_as_failed(batch_id)
+        logger.exception(
+            "Provider rejected send batch", extra={"task": str(task)}
+        )
+        return
+    except ProviderTemporaryError:
+        # Возвращаем статус QUEUED
+        # райзим ProviderTemporaryError -> уйдет в retry queue
+        logger.info("marking batch as failed", extra={"task": str(task), "batch": batch})
+        async with async_session_factory() as session:
+            async with session.begin():
+                await MailingSendingService(session).mark_as_queued(batch_id)
+        logger.exception(
+            "Provider temporary error", extra={"task": str(task)}
+        )
+        raise
+
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            
+            service = MailingSendingService(session)
+            logger.info("processing provider response", extra={"task": str(task), "response": response})
 
             if not response.status:
-                await service.mark_batch_as_failed(batch)
-                logger.error(
-                    "Provider returned failed send response", extra={"task": str(task)}
-                )
+                await service.mark_as_failed(batch_id)
+                logger.error("Provider returned failed send response", extra={"task": str(task)})
                 return
 
-            is_full_response = await service.apply_send_response(batch, response)
+            is_full_response = await service.apply_send_response(batch_id, response)
             if not is_full_response:
                 logger.error(
                     "Provider response does not match batch messages",
@@ -124,7 +148,7 @@ async def handle_message(
 
     try:
         await send_task(task)
-    except (ProviderTemporaryError, BatchWithUnexpectedStatus) as e:
+    except (ProviderTemporaryError) as e:
         logger.warning(
             "Task failed, will be retried", extra={"task": str(task), "error": e}
         )
@@ -161,7 +185,7 @@ async def consume() -> None:
 
 
 def main() -> None:
-    """CLI entrypoint for the send consumer."""
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(consume())
 
 

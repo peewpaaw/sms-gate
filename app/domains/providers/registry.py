@@ -8,7 +8,7 @@ class ProviderRegistry:
     def __init__(self, providers: list[Provider]) -> None:
         self._providers = {provider.code: provider for provider in providers}
 
-    async def get(self, code: str) -> Provider | None:
+    async def get(self, code: str) -> Provider:
         """Get provider by code"""
         try:
             return self._providers[code]

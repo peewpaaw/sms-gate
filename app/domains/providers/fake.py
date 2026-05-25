@@ -9,7 +9,7 @@ from .base.provider import (
 
 class FakeProvider:
     code = "fake"
-    max_batch_size = 10
+    max_batch_size = 1
 
     async def send(self, batch: ProviderBatch) -> ProviderSendResponse:
         results = [

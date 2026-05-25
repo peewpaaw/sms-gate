@@ -1,17 +1,15 @@
 from collections.abc import Sequence
 from uuid import UUID
-from datetime import datetime, timezone, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MailingOutboxStatus, MessagesBatchStatus
+from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.models import (
     Mailing,
     MailingStatus,
     Message,
     MessagesBatch,
-    MailingOutbox,
 )
 from app.domains.mailing.schemas import MailingCreate
 
@@ -89,18 +87,6 @@ class MailingRepository:
         result = await self.session.execute(query)
         return result.scalar_one()
 
-    async def update(self, mailing_id: UUID, *, updated_by_id: UUID) -> Mailing | None:
-        mailing = await self.get_by_id(mailing_id)
-        if mailing is None:
-            return None
-
-        mailing.updated_by_id = updated_by_id
-        await self.session.commit()
-        await self.session.refresh(
-            mailing,
-            attribute_names=["messages", "created_by", "updated_by"],
-        )
-
     async def delete(self, mailing_id: UUID) -> bool:
         mailing = await self.get_by_id(mailing_id)
         if mailing is None:
@@ -152,37 +138,7 @@ class MessagesBatchRepository:
         await self.session.execute(query)
         await self.session.flush()
 
-
-class MailingOutboxRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
-
-    async def claim_for_publishing(
-        self, *, limit: int = 100
-    ) -> Sequence[MailingOutbox]:
-        query = (
-            select(MailingOutbox)
-            .where(
-                MailingOutbox.status == MailingOutboxStatus.PENDING
-                or (
-                    MailingOutbox.status == MailingOutboxStatus.FAILED
-                    and MailingOutbox.next_retry_at < (datetime.now(timezone.utc))
-                )
-            )
-            .order_by(MailingOutbox.created_at.asc())
-            .limit(limit)
-            .with_for_update(skip_locked=True)
-        )
+    async def get_by_id(self, batch_id: UUID) -> MessagesBatch | None:
+        query = select(MessagesBatch).options(selectinload(MessagesBatch.messages)).where(MessagesBatch.id == batch_id)
         result = await self.session.execute(query)
-        return result.scalars().all()
-
-    async def mark_as_published(self, outbox: MailingOutbox) -> None:
-        outbox.status = MailingOutboxStatus.PUBLISHED
-        self.session.add(outbox)
-        await self.session.flush()
-
-    async def mark_as_failed(self, outbox: MailingOutbox) -> None:
-        outbox.status = MailingOutboxStatus.FAILED
-        outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(minutes=1)
-        self.session.add(outbox)
-        await self.session.flush()
+        return result.scalar_one_or_none()

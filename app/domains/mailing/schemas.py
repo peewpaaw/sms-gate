@@ -7,8 +7,6 @@ from app.domains.auth.schemas import UserRead
 from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.models import MailingStatus, MessageStatus
 
-from app.domains.providers.base.provider import Provider
-from app.domains.providers.registry import provider_registry
 
 
 class MessageCreate(BaseModel):
@@ -63,3 +61,14 @@ class MessagesBatchRead(BaseModel):
     id: UUID
     provider_code: str
     status: MessagesBatchStatus
+
+
+class BatchTask(BaseModel):
+    mailing_id: UUID
+    batch_id: UUID
+    provider_code: str
+
+
+# class MailingOutboxCreate(BaseModel):
+#     event_type: MailingOutboxEventType
+#     payload: dict

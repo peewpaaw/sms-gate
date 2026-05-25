@@ -12,10 +12,9 @@ import aio_pika
 from aio_pika.abc import AbstractChannel
 
 from app.db.session import async_session_factory
-from app.domains.mailing.repositories import MessagesBatchRepository
-from app.domains.mailing.services.queueing import MailingQueueingService
+
+from app.messaging.outbox.repository import OutboxRepository
 from app.messaging.rabbitmq import connect, setup_topology
-from app.messaging.schemas import SendBatchTask
 from app.messaging import topology
 
 
@@ -44,44 +43,31 @@ async def _publish(
     )
 
 
-async def _publish_send_batch(channel: AbstractChannel, task: SendBatchTask) -> None:
+async def _publish_send_batch(channel: AbstractChannel, outbox: Outbox) -> None:
     """Publish a single batch send task to the send queue."""
     await _publish(
         channel=channel,
         exchange_name=topology.SEND_EXCHANGE,
         routing_key=topology.SEND_BATCH_ROUTING_KEY,
-        payload=task.model_dump(mode="json"),
+        payload=outbox.payload,
     )
 
 
 async def publish_once(channel: AbstractChannel) -> int:
-    """Publish one locked page of created batches and mark them as queued.
-
-    The status update happens only after a successful publish. If the process
-    dies after publishing but before commit, a duplicate task can be published
-    later, so the consumer must be idempotent.
-    """
     async with async_session_factory() as session:
-        service = MailingQueueingService(session)
+        outbox_repository = OutboxRepository(session)
         async with session.begin():
-            batches = await service.claim_for_queueing(limit=PUBLISH_BATCH_SIZE)
-            mailing_ids = set()
-
-            for batch in batches:
-                task = SendBatchTask(
-                    mailing_id=batch.mailing_id,
-                    batch_id=batch.id,
-                    provider_code=batch.provider_code,
-                )
-                await _publish_send_batch(channel, task)
-                await service.mark_batch_as_queued(batch)
-                await session.flush()
-                mailing_ids.add(batch.mailing_id)
-
-            # for mailing_id in mailing_ids:
-            #     await service.mark_mailing_as_queued(mailing_id)
-
-            return len(batches)
+            rows = await outbox_repository.claim_for_publishing(limit=PUBLISH_BATCH_SIZE)
+            for row in rows:
+                try:
+                    await _publish_send_batch(channel, row)
+                    await outbox_repository.mark_as_published(row)
+                    await session.flush()
+                except Exception:
+                    await outbox_repository.mark_as_failed(row)
+                    await session.flush()
+                    raise
+            return len(rows)
 
 
 async def publish() -> None:
@@ -94,8 +80,8 @@ async def publish() -> None:
         while True:
             try:
                 published_count = await publish_once(channel)
-            except Exception:
-                logger.exception("Failed to publish mailing batches")
+            except Exception as e:
+                logger.exception("Failed to publish mailing batches: %e", e)
                 await asyncio.sleep(ERROR_SLEEP_SECONDS)
                 continue
 
@@ -104,6 +90,7 @@ async def publish() -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(publish())
 
 

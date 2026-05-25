@@ -5,20 +5,15 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
-    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin
 from app.domains.auth.models import User
 from .enums import (
-    MailingOutboxEventType,
-    MailingOutboxStatus,
     MailingStatus,
     MessageStatus,
     MessagesBatchStatus,
@@ -108,51 +103,3 @@ class MessagesBatch(Base, TimestampedMixin):
 
     messages = relationship("Message", back_populates="batch")
     mailing = relationship("Mailing", back_populates="batches")
-    outbox_events = relationship(
-        "MailingOutbox",
-        back_populates="batch",
-        cascade="all, delete-orphan",
-    )
-
-
-class MailingOutbox(Base, TimestampedMixin):
-    """Transactional outbox rows for publishing tasks to RabbitMQ."""
-
-    __tablename__ = "mailing_outbox"
-    __table_args__ = (
-        Index("ix_mailing_outbox_status_next_retry_at", "status", "next_retry_at"),
-        Index(
-            "ix_mailing_outbox_pending_created_at",
-            "created_at",
-            postgresql_where=(f"status = '{MailingOutboxStatus.PENDING.value}'"),
-        ),
-    )
-
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    event_type: Mapped[MailingOutboxEventType] = mapped_column(
-        Enum(
-            MailingOutboxEventType,
-            native_enum=False,
-            values_callable=lambda x: [e.value for e in x],
-        ),
-        nullable=False,
-    )
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    status: Mapped[MailingOutboxStatus] = mapped_column(
-        Enum(
-            MailingOutboxStatus,
-            native_enum=False,
-            values_callable=lambda x: [e.value for e in x],
-        ),
-        default=MailingOutboxStatus.PENDING,
-        nullable=False,
-    )
-    published_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    next_retry_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )

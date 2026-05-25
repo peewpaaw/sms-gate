@@ -89,7 +89,6 @@ class Provider(Protocol):
     """Provider interface"""
 
     code: str
-    name: str
     max_batch_size: int
 
     async def send(self, batch: ProviderBatch) -> ProviderSendResponse: ...
