@@ -13,6 +13,7 @@ from aio_pika.abc import AbstractChannel
 
 from app.db.session import async_session_factory
 
+from app.messaging.outbox.models import Outbox
 from app.messaging.outbox.repository import OutboxRepository
 from app.messaging.rabbitmq import connect, setup_topology
 from app.messaging import topology
