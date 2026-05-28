@@ -1,5 +1,6 @@
 from datetime import datetime
 from uuid import UUID
+from xxlimited import Str
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -66,4 +67,10 @@ class MessagesBatchRead(BaseModel):
 class SendBatchTask(BaseModel):
     mailing_id: UUID
     batch_id: UUID
+    provider_code: str
+
+
+class GetMessageStatusTask(BaseModel):
+    message_id: UUID
+    external_id: str
     provider_code: str
