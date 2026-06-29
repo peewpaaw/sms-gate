@@ -1,7 +1,7 @@
 OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "auth",
-        "description": "Аутентификация по заголовку `X-API-Key`.",
+        "description": "Методы для работы с учетной записью пользователя.",
     },
     {
         "name": "mailings",
