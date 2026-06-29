@@ -1,8 +1,8 @@
-"""init
+"""Initial
 
-Revision ID: 4f6db8629584
+Revision ID: 1209a6c16610
 Revises: 
-Create Date: 2026-05-25 16:15:42.277626
+Create Date: 2026-06-29 10:53:53.182783
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '4f6db8629584'
+revision: str = '1209a6c16610'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -39,10 +39,13 @@ def upgrade() -> None:
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('api_key_hash', sa.String(length=128), nullable=True),
+    sa.Column('name', sa.String(length=255), nullable=False),
+    sa.Column('email', sa.String(length=320), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('api_key_hash')
+    sa.UniqueConstraint('api_key_hash'),
+    sa.UniqueConstraint('email')
     )
     op.create_table('mailing',
     sa.Column('id', sa.Uuid(), nullable=False),

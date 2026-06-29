@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
@@ -27,7 +28,11 @@ async def get_current_user(
     user = await session.scalar(select(User).where(User.api_key_hash == api_key_hash))
 
     if user is None and x_api_key == settings.default_api_key:
-        user = User(api_key_hash=hash_api_key(x_api_key))
+        user = User(
+            api_key_hash=hash_api_key(x_api_key),
+            name="",
+            email=f"{uuid4()}@example.com",
+        )
         session.add(user)
         await session.flush()
 
