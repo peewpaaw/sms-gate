@@ -4,14 +4,14 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MessagesBatchStatus
+from app.domains.mailing.enums import MailingStatus, MessagesBatchStatus
 from app.domains.mailing.models import (
     Mailing,
-    MailingStatus,
+    MailingTemplate,
     Message,
     MessagesBatch,
 )
-from app.domains.mailing.schemas import MailingCreate
+from app.domains.mailing.schemas import MailingCreate, MailingTemplateCreate, MailingTemplateUpdate
 
 
 class MailingRepository:
@@ -142,3 +142,90 @@ class MessagesBatchRepository:
         query = select(MessagesBatch).options(selectinload(MessagesBatch.messages)).where(MessagesBatch.id == batch_id)
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
+
+
+class MailingTemplateRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(
+        self, payload: MailingTemplateCreate, created_by_id: UUID
+    ) -> MailingTemplate:
+        template = MailingTemplate(
+            name=payload.name,
+            text=payload.text,
+            created_by_id=created_by_id,
+            updated_by_id=created_by_id,
+        )
+        self.session.add(template)
+        await self.session.commit()
+        created = await self.get_by_id(template.id)
+        assert created is not None
+        return created
+
+    async def get_by_id(self, template_id: UUID) -> MailingTemplate | None:
+        query = (
+            select(MailingTemplate)
+            .options(
+                selectinload(MailingTemplate.created_by),
+                selectinload(MailingTemplate.updated_by),
+            )
+            .where(MailingTemplate.id == template_id)
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def list(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Sequence[MailingTemplate]:
+        query = (
+            select(MailingTemplate)
+            .options(
+                selectinload(MailingTemplate.created_by),
+                selectinload(MailingTemplate.updated_by),
+            )
+            .order_by(MailingTemplate.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await self.session.execute(query)
+        return result.scalars().all()
+
+    async def count(self) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(MailingTemplate)
+        )
+        return result.scalar_one()
+
+    async def update(
+        self,
+        template_id: UUID,
+        payload: MailingTemplateUpdate,
+        updated_by_id: UUID,
+    ) -> MailingTemplate | None:
+        template = await self.get_by_id(template_id)
+        if template is None:
+            return None
+
+        if payload.name is not None:
+            template.name = payload.name
+        if payload.text is not None:
+            template.text = payload.text
+        template.updated_by_id = updated_by_id
+
+        await self.session.commit()
+        updated = await self.get_by_id(template_id)
+        assert updated is not None
+        return updated
+
+    async def delete(self, template_id: UUID) -> bool:
+        template = await self.get_by_id(template_id)
+        if template is None:
+            return False
+
+        await self.session.delete(template)
+        await self.session.flush()
+        return True

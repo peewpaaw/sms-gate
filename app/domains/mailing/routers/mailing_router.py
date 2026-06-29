@@ -7,19 +7,18 @@ from app.api.pagination import Page
 from app.deps import SessionDep, CurrentUserDep
 from app.domains.mailing.filters import MailingFilter
 from app.domains.mailing.services.publishing import MailingPublishingService
-from .repositories import MailingRepository
-from .schemas import MailingCreate, MailingRead
+from app.domains.mailing.repositories import MailingRepository
+from app.domains.mailing.schemas import MailingCreate, MailingRead
+
 
 router = APIRouter(prefix="/mailings", tags=["mailings"])
 
 
-@router.get("/ping")
-async def ping() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"message": "pong"}
-
-
-@router.get("/")
+@router.get(
+    "/",
+    summary="Список рассылок",
+    description="Пагинация и опциональный фильтр по статусу.",
+)
 async def get_mailings(
     session: SessionDep,
     _current_user: CurrentUserDep,
@@ -42,7 +41,11 @@ async def get_mailings(
     )
 
 
-@router.post("/")
+@router.post(
+    "/",
+    summary="Создать рассылку",
+    description="Создаёт рассылку и сообщения получателей. Отправка — отдельным методом.",
+)
 async def create_mailing(
     session: SessionDep,
     current_user: CurrentUserDep,
@@ -53,7 +56,10 @@ async def create_mailing(
     return MailingRead.model_validate(mailing)
 
 
-@router.get("/{mailing_id}")
+@router.get(
+    "/{mailing_id}",
+    summary="Рассылка по ID",
+)
 async def get_mailing(
     session: SessionDep,
     mailing_id: UUID,
@@ -67,7 +73,11 @@ async def get_mailing(
     return MailingRead.model_validate(mailing)
 
 
-@router.delete("/{mailing_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{mailing_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить рассылку",
+)
 async def delete_mailing(
     session: SessionDep,
     _current_user: CurrentUserDep,
@@ -81,13 +91,18 @@ async def delete_mailing(
     await session.commit()
 
 
-@router.post("/{mailing_id}/send")
+@router.post(
+    "/{mailing_id}/send",
+    summary="Отправить рассылку",
+    description=(
+        "Разбивает сообщения на батчи, переводит в очередь на отправку через outbox/publisher."
+    ),
+)
 async def send_mailing(
     session: SessionDep,
     mailing_id: UUID,
     _current_user: CurrentUserDep,
 ) -> dict[str, str]:
-    """Разбиваем на батчи -> prepared -> ставится в очередь паблишером"""
     mailing_repository = MailingRepository(session)
     mailing = await mailing_repository.get_by_id(mailing_id)
     if mailing is None:
