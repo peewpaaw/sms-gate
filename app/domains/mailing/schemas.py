@@ -1,13 +1,13 @@
 from datetime import datetime
 from uuid import UUID
-from xxlimited import Str
+
+# from xxlimited import Str
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domains.auth.schemas import UserRead
 from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.models import MailingStatus, MessageStatus
-
 
 
 class MessageCreate(BaseModel):
