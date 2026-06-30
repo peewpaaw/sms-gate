@@ -15,9 +15,11 @@ class ProviderRegistry:
         except KeyError as exc:
             raise LookupError(f"Provider {code!r} is not registered") from exc
 
-    async def list(self) -> list[str]:
-        """List all registered providers (codes)"""
-        return list(self._providers.keys())
+    def try_get(self, code: str) -> Provider | None:
+        return self._providers.get(code)
+
+    def has(self, code: str) -> bool:
+        return code in self._providers
 
 
 settings = get_settings()

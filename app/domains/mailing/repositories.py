@@ -12,6 +12,8 @@ from app.domains.mailing.models import (
     MessagesBatch,
 )
 from app.domains.mailing.schemas import MailingCreate, MailingTemplateCreate, MailingTemplateUpdate
+from app.domains.providers.repositories import ProviderRepository
+from app.domains.providers.validation import assert_provider_available_for_mailing
 
 
 class MailingRepository:
@@ -19,6 +21,11 @@ class MailingRepository:
         self.session = session
 
     async def create(self, payload: MailingCreate, created_by_id: UUID) -> Mailing:
+        provider_repository = ProviderRepository(self.session)
+        await assert_provider_available_for_mailing(
+            provider_repository, payload.provider_code
+        )
+
         mailing = Mailing(
             provider_code=payload.provider_code,
             created_by_id=created_by_id,

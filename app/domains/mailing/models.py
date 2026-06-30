@@ -24,7 +24,9 @@ class Mailing(Base, TimestampedMixin):
     __tablename__ = "mailing"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    provider_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_code: Mapped[str] = mapped_column(
+        String(100), ForeignKey("provider.code", ondelete="RESTRICT"), nullable=False
+    )
     status: Mapped[MailingStatus] = mapped_column(
         Enum(
             MailingStatus,
@@ -88,7 +90,9 @@ class MessagesBatch(Base, TimestampedMixin):
     mailing_id: Mapped[UUID] = mapped_column(
         ForeignKey("mailing.id", ondelete="CASCADE"), nullable=False
     )
-    provider_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_code: Mapped[str] = mapped_column(
+        String(100), ForeignKey("provider.code", ondelete="RESTRICT"), nullable=False
+    )
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[MessagesBatchStatus] = mapped_column(
         Enum(

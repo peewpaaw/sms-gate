@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.core.config import get_settings
 from app.domains.auth import models as auth_models
 from app.domains.mailing import models as mailing_models
+from app.domains.providers import models as provider_models
 from app.messaging.outbox import models as outbox_models
 
 # this is the Alembic Config object, which provides

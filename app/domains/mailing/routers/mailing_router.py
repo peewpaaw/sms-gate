@@ -9,6 +9,11 @@ from app.domains.mailing.filters import MailingFilter
 from app.domains.mailing.services.publishing import MailingPublishingService
 from app.domains.mailing.repositories import MailingRepository
 from app.domains.mailing.schemas import MailingCreate, MailingRead
+from app.domains.providers.exceptions import (
+    ProviderDisabledError,
+    ProviderNotFoundError,
+    ProviderNotImplementedError,
+)
 
 
 router = APIRouter(prefix="/mailings", tags=["mailings"])
@@ -52,7 +57,18 @@ async def create_mailing(
     payload: MailingCreate,
 ) -> MailingRead:
     mailing_repository = MailingRepository(session)
-    mailing = await mailing_repository.create(payload, created_by_id=current_user.id)
+    try:
+        mailing = await mailing_repository.create(
+            payload, created_by_id=current_user.id
+        )
+    except ProviderNotFoundError:
+        raise HTTPException(status_code=422, detail="Unknown provider") from None
+    except ProviderDisabledError:
+        raise HTTPException(status_code=422, detail="Provider disabled") from None
+    except ProviderNotImplementedError:
+        raise HTTPException(
+            status_code=422, detail="Provider is not configured on this server"
+        ) from None
     return MailingRead.model_validate(mailing)
 
 
