@@ -15,4 +15,8 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "providers",
         "description": "Доступные SMS-провайдеры.",
     },
+    {
+        "name": "stats",
+        "description": "Агрегированная статистика для дашбордов.",
+    },
 ]

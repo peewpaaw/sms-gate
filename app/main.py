@@ -6,6 +6,7 @@ from app.domains.auth.router import router as auth_router
 from app.domains.mailing.routers.mailing_router import router as mailing_router
 from app.domains.mailing.routers.templates_router import router as templates_router
 from app.domains.providers.router import router as providers_router
+from app.domains.stats.router import router as stats_router
 
 
 settings = get_settings()
@@ -15,6 +16,7 @@ api_v1_router.include_router(auth_router)
 api_v1_router.include_router(mailing_router)
 api_v1_router.include_router(templates_router)
 api_v1_router.include_router(providers_router)
+api_v1_router.include_router(stats_router)
 
 app = FastAPI(
     title=settings.app_name,
