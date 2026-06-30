@@ -15,7 +15,8 @@ router = APIRouter(prefix="/providers", tags=["providers"])
 @router.get(
     "/",
     summary="Список провайдеров",
-    description="Коды и метаданные провайдеров, доступных для создания рассылок.",
+    description="Коды и метаданные провайдеров, доступных для создания рассылок. \
+    Для получения только доступных провайдеров, устанавливаем параметр enabled_only в True.",
 )
 async def list_providers(
     session: SessionDep,
