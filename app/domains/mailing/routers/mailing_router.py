@@ -7,8 +7,14 @@ from app.api.pagination import Page
 from app.deps import SessionDep, CurrentUserDep
 from app.domains.mailing.filters import MailingFilter
 from app.domains.mailing.services.publishing import MailingPublishingService
+from app.domains.mailing.exceptions import (
+    MailingNotFoundError,
+    MailingStatusDeleteForbiddenError,
+    MailingStatusUpdateForbiddenError,
+)
 from app.domains.mailing.repositories import MailingRepository
-from app.domains.mailing.schemas import MailingCreate, MailingRead
+from app.domains.mailing.routers.messages_router import router as messages_router
+from app.domains.mailing.schemas import MailingCreate, MailingRead, MailingUpdate
 from app.domains.providers.exceptions import (
     ProviderDisabledError,
     ProviderNotFoundError,
@@ -17,6 +23,7 @@ from app.domains.providers.exceptions import (
 
 
 router = APIRouter(prefix="/mailings", tags=["mailings"])
+router.include_router(messages_router, prefix="/{mailing_id}/messages")
 
 
 @router.get(
@@ -72,6 +79,43 @@ async def create_mailing(
     return MailingRead.model_validate(mailing)
 
 
+@router.put(
+    "/{mailing_id}",
+    summary="Обновить рассылку",
+    description=(
+        "Обновляет provider_code. Если передан `messages` — полная замена списка; "
+        "если поле отсутствует — сообщения не меняются. Доступно только в статусе created."
+    ),
+)
+async def update_mailing(
+    session: SessionDep,
+    current_user: CurrentUserDep,
+    mailing_id: UUID,
+    payload: MailingUpdate,
+) -> MailingRead:
+    mailing_repository = MailingRepository(session)
+    try:
+        mailing = await mailing_repository.update(
+            mailing_id, payload, updated_by_id=current_user.id
+        )
+    except MailingNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing not found") from None
+    except MailingStatusUpdateForbiddenError:
+        raise HTTPException(
+            status_code=409,
+            detail="Mailing can be updated only in created status",
+        ) from None
+    except ProviderNotFoundError:
+        raise HTTPException(status_code=422, detail="Unknown provider") from None
+    except ProviderDisabledError:
+        raise HTTPException(status_code=422, detail="Provider disabled") from None
+    except ProviderNotImplementedError:
+        raise HTTPException(
+            status_code=422, detail="Provider is not configured on this server"
+        ) from None
+    return MailingRead.model_validate(mailing)
+
+
 @router.get(
     "/{mailing_id}",
     summary="Рассылка по ID",
@@ -100,9 +144,15 @@ async def delete_mailing(
     mailing_id: UUID,
 ) -> None:
     mailing_repository = MailingRepository(session)
-    deleted = await mailing_repository.delete(mailing_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Mailing not found")
+    try:
+        await mailing_repository.delete(mailing_id)
+    except MailingNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing not found") from None
+    except MailingStatusDeleteForbiddenError:
+        raise HTTPException(
+            status_code=409,
+            detail="Mailing can be deleted only in created status",
+        ) from None
 
     await session.commit()
 

@@ -4,14 +4,28 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MailingStatus, MessagesBatchStatus
+from app.domains.mailing.enums import MailingStatus, MessageStatus, MessagesBatchStatus
 from app.domains.mailing.models import (
     Mailing,
     MailingTemplate,
     Message,
     MessagesBatch,
 )
-from app.domains.mailing.schemas import MailingCreate, MailingTemplateCreate, MailingTemplateUpdate
+from app.domains.mailing.exceptions import (
+    MailingNotFoundError,
+    MailingStatusDeleteForbiddenError,
+    MailingStatusUpdateForbiddenError,
+    MessageNotFoundError,
+    MessageStatusMutationForbiddenError,
+)
+from app.domains.mailing.schemas import (
+    MailingCreate,
+    MailingTemplateCreate,
+    MailingTemplateUpdate,
+    MailingUpdate,
+    MessageCreate,
+    MessageUpdate,
+)
 from app.domains.providers.repositories import ProviderRepository
 from app.domains.providers.validation import assert_provider_available_for_mailing
 
@@ -62,6 +76,57 @@ class MailingRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_by_id_for_update(self, mailing_id: UUID) -> Mailing | None:
+        query = (
+            select(Mailing)
+            .options(
+                selectinload(Mailing.messages),
+                selectinload(Mailing.created_by),
+                selectinload(Mailing.updated_by),
+            )
+            .where(Mailing.id == mailing_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def update(
+        self,
+        mailing_id: UUID,
+        payload: MailingUpdate,
+        updated_by_id: UUID,
+    ) -> Mailing:
+        mailing = await self.get_by_id_for_update(mailing_id)
+        if mailing is None:
+            raise MailingNotFoundError
+        if mailing.status != MailingStatus.CREATED:
+            raise MailingStatusUpdateForbiddenError
+
+        provider_repository = ProviderRepository(self.session)
+        await assert_provider_available_for_mailing(
+            provider_repository, payload.provider_code
+        )
+
+        mailing.provider_code = payload.provider_code
+        mailing.updated_by_id = updated_by_id
+
+        if payload.messages is not None:
+            mailing.messages.clear()
+            for item in payload.messages:
+                mailing.messages.append(
+                    Message(
+                        msisdn=item.msisdn,
+                        text=item.text,
+                        send_on=item.send_on,
+                        mailing_id=mailing.id,
+                    )
+                )
+
+        await self.session.commit()
+        updated = await self.get_by_id(mailing_id)
+        assert updated is not None
+        return updated
+
     async def list(
         self,
         *,
@@ -94,14 +159,111 @@ class MailingRepository:
         result = await self.session.execute(query)
         return result.scalar_one()
 
-    async def delete(self, mailing_id: UUID) -> bool:
-        mailing = await self.get_by_id(mailing_id)
+    async def delete(self, mailing_id: UUID) -> None:
+        mailing = await self.get_by_id_for_update(mailing_id)
         if mailing is None:
-            return False
+            raise MailingNotFoundError
+        if mailing.status != MailingStatus.CREATED:
+            raise MailingStatusDeleteForbiddenError
 
         await self.session.delete(mailing)
         await self.session.flush()
-        return True
+
+
+class MessageRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def _require_mailing_created(self, mailing_id: UUID) -> Mailing:
+        mailing = await MailingRepository(self.session).get_by_id_for_update(
+            mailing_id
+        )
+        if mailing is None:
+            raise MailingNotFoundError
+        if mailing.status != MailingStatus.CREATED:
+            raise MailingStatusUpdateForbiddenError
+        return mailing
+
+    async def get(self, mailing_id: UUID, message_id: UUID) -> Message | None:
+        query = select(Message).where(
+            Message.id == message_id,
+            Message.mailing_id == mailing_id,
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_for_update(
+        self, mailing_id: UUID, message_id: UUID
+    ) -> Message | None:
+        query = (
+            select(Message)
+            .where(
+                Message.id == message_id,
+                Message.mailing_id == mailing_id,
+            )
+            .with_for_update()
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def create(
+        self,
+        mailing_id: UUID,
+        payload: MessageCreate,
+        updated_by_id: UUID,
+    ) -> Message:
+        mailing = await self._require_mailing_created(mailing_id)
+        message = Message(
+            msisdn=payload.msisdn,
+            text=payload.text,
+            send_on=payload.send_on,
+            mailing_id=mailing.id,
+        )
+        self.session.add(message)
+        mailing.updated_by_id = updated_by_id
+        await self.session.commit()
+        await self.session.refresh(message)
+        return message
+
+    async def update(
+        self,
+        mailing_id: UUID,
+        message_id: UUID,
+        payload: MessageUpdate,
+        updated_by_id: UUID,
+    ) -> Message:
+        mailing = await self._require_mailing_created(mailing_id)
+        message = await self.get_for_update(mailing_id, message_id)
+        if message is None:
+            raise MessageNotFoundError
+        if message.status != MessageStatus.CREATED:
+            raise MessageStatusMutationForbiddenError
+
+        message.msisdn = payload.msisdn
+        message.text = payload.text
+        message.send_on = payload.send_on
+        mailing.updated_by_id = updated_by_id
+
+        await self.session.commit()
+        await self.session.refresh(message)
+        return message
+
+    async def delete(
+        self,
+        mailing_id: UUID,
+        message_id: UUID,
+        updated_by_id: UUID,
+    ) -> None:
+        mailing = await self._require_mailing_created(mailing_id)
+        message = await self.get_for_update(mailing_id, message_id)
+        if message is None:
+            raise MessageNotFoundError
+        if message.status != MessageStatus.CREATED:
+            raise MessageStatusMutationForbiddenError
+
+        mailing.updated_by_id = updated_by_id
+        await self.session.delete(message)
+        await self.session.flush()
 
 
 class MessagesBatchRepository:
@@ -146,7 +308,11 @@ class MessagesBatchRepository:
         await self.session.flush()
 
     async def get_by_id(self, batch_id: UUID) -> MessagesBatch | None:
-        query = select(MessagesBatch).options(selectinload(MessagesBatch.messages)).where(MessagesBatch.id == batch_id)
+        query = (
+            select(MessagesBatch)
+            .options(selectinload(MessagesBatch.messages))
+            .where(MessagesBatch.id == batch_id)
+        )
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 

@@ -27,7 +27,16 @@ class MessageCreate(BaseModel):
 
 class MailingCreate(BaseModel):
     provider_code: str = Field(min_length=1, max_length=100)
-    messages: list[MessageCreate]
+    messages: list[MessageCreate] = Field(default_factory=list)
+
+
+class MailingUpdate(BaseModel):
+    provider_code: str = Field(min_length=1, max_length=100)
+    messages: list[MessageCreate] | None = None
+
+
+class MessageUpdate(MessageCreate):
+    """Full replace of one message fields (same as create)."""
 
 
 class MessageRead(BaseModel):

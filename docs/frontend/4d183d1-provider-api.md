@@ -89,7 +89,7 @@
 
 ### `POST /api/v1/mailings/`
 
-Тело без изменений: `provider_code` + `messages[]`.
+Тело: `provider_code` + `messages[]` (массив может быть **пустым** — получатели добавляются через nested API, см. [mailing-crud-messages-api.md](./mailing-crud-messages-api.md)).
 
 Добавлена серверная проверка:
 
