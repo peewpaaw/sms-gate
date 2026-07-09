@@ -16,3 +16,15 @@ class MessageNotFoundError(Exception):
 
 class MessageStatusMutationForbiddenError(Exception):
     """Message cannot be updated or deleted unless status is CREATED."""
+
+
+class MailingStatusPublishForbiddenError(Exception):
+    """Mailing cannot be published unless status is CREATED."""
+
+
+class MailingBatchesNotEmptyError(Exception):
+    """Mailing batches are not empty."""
+
+
+class MailingMessagesEmptyError(Exception):
+    """Mailing messages are empty."""

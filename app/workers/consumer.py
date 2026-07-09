@@ -77,54 +77,64 @@ async def send_task(task: SendBatchTask) -> None:
 
             # Некорректный статус батча
             if batch.status != MessagesBatchStatus.QUEUED:
-                logger.warning("Batch not in expected status: %s", batch.status, extra={"task": str(task)})
+                logger.warning(
+                    "Batch not in expected status: %s",
+                    batch.status,
+                    extra={"task": str(task)},
+                )
                 return
 
-            logger.info("marking batch as sending", extra={"task": str(task), "batch": batch})
+            logger.info(
+                "marking batch as sending", extra={"task": str(task), "batch": batch}
+            )
             await service.mark_as_sending(batch)
-            
+
             provider_batch = _build_provider_batch(batch.messages)
             batch_id = batch.id
 
     # Все ок: обрабатываем батч (в статусе QUEUED -> SENDING)
     provider = await provider_registry.get(task.provider_code)
-    
+
     try:
         logger.info("sending batch to provider", extra={"task": str(task)})
         response = await provider.send(provider_batch)
     except ProviderPermanentError:
         # Устанавливаем статус FAILED
         # return -> ack
-        logger.info("marking batch as failed", extra={"task": str(task), "batch": batch})
+        logger.info(
+            "marking batch as failed", extra={"task": str(task), "batch": batch}
+        )
         async with async_session_factory() as session:
             async with session.begin():
                 await MailingSendingService(session).mark_as_failed(batch_id)
-        logger.exception(
-            "Provider rejected send batch", extra={"task": str(task)}
-        )
+        logger.exception("Provider rejected send batch", extra={"task": str(task)})
         return
     except ProviderTemporaryError:
         # Возвращаем статус QUEUED
         # райзим ProviderTemporaryError -> уйдет в retry queue
-        logger.info("marking batch as failed", extra={"task": str(task), "batch": batch})
+        logger.info(
+            "marking batch as failed", extra={"task": str(task), "batch": batch}
+        )
         async with async_session_factory() as session:
             async with session.begin():
                 await MailingSendingService(session).mark_as_queued(batch_id)
-        logger.exception(
-            "Provider temporary error", extra={"task": str(task)}
-        )
+        logger.exception("Provider temporary error", extra={"task": str(task)})
         raise
-
 
     async with async_session_factory() as session:
         async with session.begin():
-            
+
             service = MailingSendingService(session)
-            logger.info("processing provider response", extra={"task": str(task), "response": response})
+            logger.info(
+                "processing provider response",
+                extra={"task": str(task), "response": response},
+            )
 
             if not response.status:
                 await service.mark_as_failed(batch_id)
-                logger.error("Provider returned failed send response", extra={"task": str(task)})
+                logger.error(
+                    "Provider returned failed send response", extra={"task": str(task)}
+                )
                 return
 
             is_full_response = await service.apply_send_response(batch_id, response)
@@ -148,7 +158,7 @@ async def handle_message(
 
     try:
         await send_task(task)
-    except (ProviderTemporaryError) as e:
+    except ProviderTemporaryError as e:
         logger.warning(
             "Task failed, will be retried", extra={"task": str(task), "error": e}
         )
