@@ -64,6 +64,7 @@ def _build_provider_batch(batch_messages: list) -> ProviderBatch:
 
 async def send_task(task: SendBatchTask) -> None:
     """Send one queued batch through its provider and persist the result."""
+    logging.info("Sending task: %s", task)
     async with async_session_factory() as session:
         async with session.begin():
             service = MailingSendingService(session)
@@ -149,6 +150,7 @@ async def handle_message(
     message: AbstractIncomingMessage, channel: AbstractChannel
 ) -> None:
     """Handle one RabbitMQ message from the send queue."""
+    logging.info("Handling message: %s", message.body)
     try:
         task = _decode_task(message)
     except (json.JSONDecodeError, ValidationError):
@@ -175,6 +177,7 @@ async def handle_message(
 
 async def consume() -> None:
     """Run the send consumer until the process is stopped."""
+    logging.info("Consumer-sender service has started")
     while True:
         try:
             connection = await connect()

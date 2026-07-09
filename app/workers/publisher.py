@@ -58,15 +58,21 @@ async def publish_once(channel: AbstractChannel) -> int:
     async with async_session_factory() as session:
         outbox_repository = OutboxRepository(session)
         async with session.begin():
-            rows = await outbox_repository.claim_for_publishing(limit=PUBLISH_BATCH_SIZE)
+            rows = await outbox_repository.claim_for_publishing(
+                limit=PUBLISH_BATCH_SIZE
+            )
+            if rows:
+                logging.info("Claimed %d mailing batches for publishing", len(rows))
             for row in rows:
                 try:
                     await _publish_send_batch(channel, row)
                     await outbox_repository.mark_as_published(row)
                     await session.flush()
+                    logging.info("Published mailing batch: %s", row.id)
                 except Exception:
                     await outbox_repository.mark_as_failed(row)
                     await session.flush()
+                    logging.error("Failed to publish mailing batch: %s", row.id)
                     raise
             return len(rows)
 
@@ -77,6 +83,7 @@ async def publish() -> None:
     async with connection:
         channel = await connection.channel()
         await setup_topology(channel)
+        logger.info("Publisher service has started")
 
         while True:
             try:
