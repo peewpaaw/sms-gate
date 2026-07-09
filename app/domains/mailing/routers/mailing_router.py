@@ -14,7 +14,11 @@ from app.domains.mailing.exceptions import (
 )
 from app.domains.mailing.repositories import MailingRepository
 from app.domains.mailing.routers.messages_router import router as messages_router
-from app.domains.mailing.schemas import MailingCreate, MailingRead, MailingUpdate
+from app.domains.mailing.schemas import (
+    MailingCreate,
+    MailingRead,
+    MailingUpdate,
+)
 from app.domains.providers.exceptions import (
     ProviderDisabledError,
     ProviderNotFoundError,

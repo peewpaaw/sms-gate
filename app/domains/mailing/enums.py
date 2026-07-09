@@ -17,6 +17,11 @@ class MessageStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class SmsMessageEncoding(StrEnum):
+    GSM7 = "gsm7"
+    UCS2 = "ucs2"
+
+
 class MessagesBatchStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
