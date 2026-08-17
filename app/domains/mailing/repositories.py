@@ -81,6 +81,7 @@ class MailingRepository:
             select(Mailing)
             .options(
                 selectinload(Mailing.messages),
+                selectinload(Mailing.batches),
                 selectinload(Mailing.created_by),
                 selectinload(Mailing.updated_by),
             )
