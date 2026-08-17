@@ -7,7 +7,7 @@
 ## Общее
 
 - **Base path:** `/api/v1`
-- **Аутентификация:** заголовок `X-API-Key`
+- **Аутентификация:** HTTP Basic (`Authorization: Basic …`, username = email). Профиль: [`GET /users/me/`](./users-basic-auth-api.md)
 - **OpenAPI tag:** `mailings`
 - **Провайдеры:** см. [4d183d1-provider-api.md](./4d183d1-provider-api.md) — `GET /providers/`, `provider_code` при создании/обновлении рассылки
 
@@ -59,8 +59,8 @@
   "id": "uuid",
   "status": "created",
   "messages": [ { "...": "MessageRead" } ],
-  "created_by": { "id": "uuid", "name": "", "email": "..." },
-  "updated_by": { "id": "uuid", "name": "", "email": "..." },
+  "created_by": { "id": "uuid", "is_active": true, "name": "", "email": "...", "role": "user" },
+  "updated_by": { "id": "uuid", "is_active": true, "name": "", "email": "...", "role": "user" },
   "created_at": "...",
   "updated_at": "..."
 }
@@ -206,7 +206,7 @@
 
 | HTTP | `detail` | Когда |
 |------|----------|--------|
-| 401 | `Unauthorized` | Нет/неверный `X-API-Key` |
+| 401 | `Unauthorized` | Нет/неверный Basic Auth |
 | 404 | `Mailing not found` | Нет рассылки |
 | 404 | `Message not found` | Нет message или не тот `mailing_id` |
 | 409 | `Mailing can be updated only in created status` | Мутация рассылки/message при статусе рассылки ≠ `created` |

@@ -5,7 +5,7 @@
 ## Общее
 
 - **Base path:** `/api/v1`
-- **Аутентификация:** заголовок `X-API-Key` (как у остальных защищённых методов)
+- **Аутентификация:** HTTP Basic (`Authorization: Basic …`, username = email). См. [users-basic-auth-api.md](./users-basic-auth-api.md)
 - **OpenAPI tag:** `services`
 - **Метод:** `POST /api/v1/services/analyze-text`
 - **Назначение:** только расчёт; текст в БД не сохраняется
@@ -19,7 +19,7 @@
 ```http
 POST /api/v1/services/analyze-text
 Content-Type: application/json
-X-API-Key: <key>
+Authorization: Basic <base64(email:password)>
 ```
 
 ```json
@@ -138,7 +138,7 @@ X-API-Key: <key>
 
 | Код | Когда |
 |-----|--------|
-| **401** | Нет или неверный `X-API-Key` |
+| **401** | Нет или неверный Basic Auth |
 | **422** | Валидация тела (`text` пустой или > 1600) |
 
 ---

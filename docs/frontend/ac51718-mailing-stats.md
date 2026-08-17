@@ -8,7 +8,7 @@ API для построения графика использования про
 ## Общее
 
 - **Base path:** `/api/v1`
-- **Аутентификация:** `X-API-Key`
+- **Аутентификация:** HTTP Basic (`Authorization: Basic …`, username = email). См. [users-basic-auth-api.md](./users-basic-auth-api.md)
 - **OpenAPI tag:** `stats`
 - **Endpoint:** `GET /api/v1/stats/messages-by-provider`
 
@@ -44,7 +44,7 @@ API для построения графика использования про
 
 ```http
 GET /api/v1/stats/messages-by-provider?date_from=2026-06-01&date_to=2026-06-30&timezone=Europe/Minsk&fill_gaps=true
-X-API-Key: ...
+Authorization: Basic ...
 ```
 
 ---

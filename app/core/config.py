@@ -6,7 +6,8 @@ class Settings(BaseSettings):
 
     app_name: str = "SMSGate"
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/smsgate"
-    default_api_key: str = ""
+    admin_email: str = ""
+    admin_password: str = ""
 
     rabbitmq_url: str = "amqp://guest:guest@localhost:5672"
 

@@ -1,7 +1,7 @@
 OPENAPI_TAGS: list[dict[str, str]] = [
     {
-        "name": "auth",
-        "description": "Методы для работы с учетной записью пользователя.",
+        "name": "users",
+        "description": "Профиль текущего пользователя и управление пользователями (CRUD — только admin).",
     },
     {
         "name": "mailings",
