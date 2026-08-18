@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from app.db.session import async_session_factory
 from app.domains.mailing.enums import MessagesBatchStatus
-from app.domains.mailing.services.sending import MailingSendingService
+from app.domains.mailing.application.sending_service import MailingSendingService
 from app.domains.providers.base.exceptions import (
     ProviderPermanentError,
     ProviderTemporaryError,

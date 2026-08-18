@@ -1,7 +1,7 @@
 import pytest
 
 from app.domains.mailing.enums import SmsMessageEncoding
-from app.domains.mailing.services.sms_text_analysis import analyze_sms_text
+from app.domains.mailing.application.sms_text_analysis import analyze_sms_text
 
 LOREM_GSM = (
     "Lorem Ipsum is simply dummy text of the printing and typesetting industry. "

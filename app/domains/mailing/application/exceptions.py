@@ -28,3 +28,7 @@ class MailingBatchesNotEmptyError(Exception):
 
 class MailingMessagesEmptyError(Exception):
     """Mailing messages are empty."""
+
+
+class TemplateNotFoundError(Exception):
+    """Mailing template id does not exist."""

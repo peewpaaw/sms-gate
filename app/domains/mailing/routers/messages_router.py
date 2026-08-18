@@ -3,13 +3,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, status
 
 from app.deps import CurrentUserDep, SessionDep
-from app.domains.mailing.exceptions import (
+from app.domains.mailing.application.exceptions import (
     MailingNotFoundError,
     MailingStatusUpdateForbiddenError,
     MessageNotFoundError,
     MessageStatusMutationForbiddenError,
 )
-from app.domains.mailing.repositories import MessageRepository
+from app.domains.mailing.application.message_service import MessageService
 from app.domains.mailing.schemas import MessageCreate, MessageRead, MessageUpdate
 
 router = APIRouter(tags=["mailings"])
@@ -27,9 +27,9 @@ async def create_message(
     mailing_id: UUID,
     payload: MessageCreate,
 ) -> MessageRead:
-    repository = MessageRepository(session)
+    service = MessageService(session)
     try:
-        message = await repository.create(
+        message = await service.create(
             mailing_id, payload, updated_by_id=current_user.id
         )
     except MailingNotFoundError:
@@ -39,7 +39,9 @@ async def create_message(
             status_code=409,
             detail="Mailing can be updated only in created status",
         ) from None
-    return MessageRead.model_validate(message)
+    result = MessageRead.model_validate(message)
+    await session.commit()
+    return result
 
 
 @router.get(
@@ -52,10 +54,11 @@ async def get_message(
     mailing_id: UUID,
     message_id: UUID,
 ) -> MessageRead:
-    repository = MessageRepository(session)
-    message = await repository.get(mailing_id, message_id)
-    if message is None:
-        raise HTTPException(status_code=404, detail="Message not found")
+    service = MessageService(session)
+    try:
+        message = await service.get(mailing_id, message_id)
+    except MessageNotFoundError:
+        raise HTTPException(status_code=404, detail="Message not found") from None
     return MessageRead.model_validate(message)
 
 
@@ -73,9 +76,9 @@ async def update_message(
     message_id: UUID,
     payload: MessageUpdate,
 ) -> MessageRead:
-    repository = MessageRepository(session)
+    service = MessageService(session)
     try:
-        message = await repository.update(
+        message = await service.update(
             mailing_id, message_id, payload, updated_by_id=current_user.id
         )
     except MailingNotFoundError:
@@ -92,7 +95,9 @@ async def update_message(
             status_code=409,
             detail="Message can be modified only in created status",
         ) from None
-    return MessageRead.model_validate(message)
+    result = MessageRead.model_validate(message)
+    await session.commit()
+    return result
 
 
 @router.delete(
@@ -109,11 +114,12 @@ async def delete_message(
     mailing_id: UUID,
     message_id: UUID,
 ) -> None:
-    repository = MessageRepository(session)
+    service = MessageService(session)
     try:
-        await repository.delete(
+        await service.delete(
             mailing_id, message_id, updated_by_id=current_user.id
         )
+        await session.commit()
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None
     except MessageNotFoundError:
@@ -128,5 +134,3 @@ async def delete_message(
             status_code=409,
             detail="Message can be modified only in created status",
         ) from None
-
-    await session.commit()

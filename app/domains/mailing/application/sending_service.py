@@ -1,12 +1,8 @@
-"""Domain services for mailing state transitions."""
-
 from uuid import UUID
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.domains.mailing.enums import MessageStatus, MessagesBatchStatus
-from app.domains.mailing.models import MessagesBatch
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.domains.mailing.models import MessageStatus, MessagesBatch, MessagesBatchStatus
 from app.domains.mailing.repositories import MessagesBatchRepository
 from app.domains.providers.base.provider import ProviderSendResponse
 
@@ -15,8 +11,8 @@ class MailingSendingService:
     """Apply sending result transitions for batches and messages."""
 
     def __init__(self, session: AsyncSession) -> None:
-        self.session = session
-        self.batch_repository = MessagesBatchRepository(session)
+        self._session = session
+        self._batch_repository = MessagesBatchRepository(session)
 
     async def apply_send_response(
         self, batch_id: UUID, response: ProviderSendResponse
@@ -27,7 +23,7 @@ class MailingSendingService:
         Partial responses are persisted as well, because retrying accepted messages can
         duplicate SMS delivery.
         """
-        batch = await self.batch_repository.get_by_id(batch_id)
+        batch = await self._batch_repository.get_by_id(batch_id)
         if batch is None:
             return False
 
@@ -51,41 +47,33 @@ class MailingSendingService:
             message.external_id = external_id
             message.status = MessageStatus.SUBMITTED
 
-        await self.session.flush()
+        await self._session.flush()
         return is_full_response
 
     async def claim_for_sending(self, batch_id: UUID) -> MessagesBatch | None:
         """Claim a batch for sending."""
-        query = (
-            select(MessagesBatch)
-            .options(selectinload(MessagesBatch.messages))
-            .where(MessagesBatch.id == batch_id)
-            .with_for_update()
-        )
-        result = await self.session.execute(query)
-        return result.scalar_one_or_none()
+        return await self._batch_repository.get_for_sending(batch_id)
 
     async def mark_as_sending(self, batch: MessagesBatch) -> None:
         """Mark a claimed batch as in-flight before calling the provider."""
         batch.status = MessagesBatchStatus.SENDING
-        await self.session.flush()
+        await self._session.flush()
 
     async def mark_as_queued(self, batch_id: UUID) -> None:
         """Mark a batch as queued after a temporary provider error."""
-        batch = await self.batch_repository.get_by_id(batch_id)
+        batch = await self._batch_repository.get_by_id(batch_id)
         if batch is None:
             return
 
         batch.status = MessagesBatchStatus.QUEUED
         for message in batch.messages:
             message.status = MessageStatus.QUEUED
-            
-        await self.session.flush()
+
+        await self._session.flush()
 
     async def mark_as_failed(self, batch_id: UUID) -> None:
         """Mark a batch and its queued messages as failed."""
-        
-        batch = await self.batch_repository.get_by_id(batch_id)
+        batch = await self._batch_repository.get_by_id(batch_id)
         if batch is None:
             return
 
@@ -94,4 +82,4 @@ class MailingSendingService:
             if message.status == MessageStatus.QUEUED:
                 message.status = MessageStatus.FAILED
 
-        await self.session.flush()
+        await self._session.flush()
