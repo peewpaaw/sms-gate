@@ -8,8 +8,11 @@ from app.deps import SessionDep, CurrentUserDep
 from app.domains.mailing.filters import MailingFilter
 from app.domains.mailing.services.publishing import MailingPublishingService
 from app.domains.mailing.exceptions import (
+    MailingBatchesNotEmptyError,
+    MailingMessagesEmptyError,
     MailingNotFoundError,
     MailingStatusDeleteForbiddenError,
+    MailingStatusPublishForbiddenError,
     MailingStatusUpdateForbiddenError,
 )
 from app.domains.mailing.repositories import MailingRepository
@@ -173,12 +176,34 @@ async def send_mailing(
     mailing_id: UUID,
     _current_user: CurrentUserDep,
 ) -> dict[str, str]:
-    mailing_repository = MailingRepository(session)
-    mailing = await mailing_repository.get_by_id(mailing_id)
-    if mailing is None:
-        raise HTTPException(status_code=404, detail="Mailing not found")
-
     publishing_service = MailingPublishingService(session)
-    await publishing_service.publish_mailing(mailing)
-    await session.commit()
+    try:
+        await publishing_service.publish_mailing(mailing_id)
+        await session.commit()
+    except MailingNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing not found") from None
+    except MailingStatusPublishForbiddenError:
+        raise HTTPException(
+            status_code=409,
+            detail="Mailing can be sent only in created status",
+        ) from None
+    except MailingBatchesNotEmptyError:
+        raise HTTPException(
+            status_code=409,
+            detail="Mailing already batched",
+        ) from None
+    except MailingMessagesEmptyError:
+        raise HTTPException(
+            status_code=422,
+            detail="Mailing has no messages",
+        ) from None
+    except ProviderNotFoundError:
+        raise HTTPException(status_code=422, detail="Unknown provider") from None
+    except ProviderDisabledError:
+        raise HTTPException(status_code=422, detail="Provider disabled") from None
+    except ProviderNotImplementedError:
+        raise HTTPException(
+            status_code=422,
+            detail="Provider is not configured on this server",
+        ) from None
     return {"message": "Mailing batched"}
