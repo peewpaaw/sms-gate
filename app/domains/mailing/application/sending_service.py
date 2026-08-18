@@ -1,10 +1,33 @@
 from uuid import UUID
 
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domains.mailing.models import MessageStatus, MessagesBatch, MessagesBatchStatus
+from app.domains.mailing.models import (
+    Mailing,
+    MailingStatus,
+    MessageStatus,
+    MessagesBatch,
+    MessagesBatchStatus,
+)
 from app.domains.mailing.repositories import MessagesBatchRepository
 from app.domains.providers.base.provider import ProviderSendResponse
+
+_TERMINAL_BATCH_STATUSES = frozenset(
+    {
+        MessagesBatchStatus.SUBMITTED,
+        MessagesBatchStatus.PARTIALLY_SUBMITTED,
+        MessagesBatchStatus.FAILED,
+        MessagesBatchStatus.COMPLETED,
+        MessagesBatchStatus.PARTIALLY_FAILED,
+    }
+)
+_CLAIMABLE_BATCH_STATUSES = frozenset(
+    {
+        MessagesBatchStatus.QUEUED,
+        MessagesBatchStatus.SENDING,
+    }
+)
 
 
 class MailingSendingService:
@@ -13,6 +36,22 @@ class MailingSendingService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._batch_repository = MessagesBatchRepository(session)
+
+    async def begin_send(self, batch_id: UUID) -> MessagesBatch | None:
+        """Lock batch and mark SENDING if QUEUED. Recover in-flight SENDING.
+
+        Returns None when batch is missing, terminal, or not claimable — caller should ack.
+        """
+        batch = await self._batch_repository.get_for_sending(batch_id)
+        if batch is None:
+            return None
+        if batch.status in _TERMINAL_BATCH_STATUSES:
+            return None
+        if batch.status not in _CLAIMABLE_BATCH_STATUSES:
+            return None
+        if batch.status == MessagesBatchStatus.QUEUED:
+            await self.mark_as_sending(batch)
+        return batch
 
     async def apply_send_response(
         self, batch_id: UUID, response: ProviderSendResponse
@@ -27,9 +66,12 @@ class MailingSendingService:
         if batch is None:
             return False
 
+        if batch.status in _TERMINAL_BATCH_STATUSES:
+            return True
+
         external_ids = {item.message_id: item.external_id for item in response.messages}
         batch_message_ids = {message.id for message in batch.messages}
-        is_full_response = set(external_ids) == batch_message_ids
+        is_full_response = batch_message_ids <= set(external_ids)
 
         if is_full_response:
             batch.status = MessagesBatchStatus.SUBMITTED
@@ -48,7 +90,31 @@ class MailingSendingService:
             message.status = MessageStatus.SUBMITTED
 
         await self._session.flush()
+        await self._maybe_mark_mailing_submitted(batch.mailing_id)
         return is_full_response
+
+    async def _maybe_mark_mailing_submitted(self, mailing_id: UUID) -> None:
+        """Promote mailing to SUBMITTED when every batch is SUBMITTED."""
+        mailing = await self._session.get(Mailing, mailing_id, with_for_update=True)
+        if mailing is None or mailing.status != MailingStatus.QUEUED:
+            return
+
+        total = await self._session.scalar(
+            select(func.count())
+            .select_from(MessagesBatch)
+            .where(MessagesBatch.mailing_id == mailing_id)
+        )
+        submitted = await self._session.scalar(
+            select(func.count())
+            .select_from(MessagesBatch)
+            .where(
+                MessagesBatch.mailing_id == mailing_id,
+                MessagesBatch.status == MessagesBatchStatus.SUBMITTED,
+            )
+        )
+        if total and total == submitted:
+            mailing.status = MailingStatus.SUBMITTED
+            await self._session.flush()
 
     async def claim_for_sending(self, batch_id: UUID) -> MessagesBatch | None:
         """Claim a batch for sending."""
@@ -67,19 +133,26 @@ class MailingSendingService:
 
         batch.status = MessagesBatchStatus.QUEUED
         for message in batch.messages:
+            if message.external_id is not None:
+                continue
+            if message.status == MessageStatus.SUBMITTED:
+                continue
             message.status = MessageStatus.QUEUED
 
         await self._session.flush()
 
     async def mark_as_failed(self, batch_id: UUID) -> None:
-        """Mark a batch and its queued messages as failed."""
+        """Mark a batch and its non-submitted messages as failed."""
         batch = await self._batch_repository.get_by_id(batch_id)
         if batch is None:
             return
 
         batch.status = MessagesBatchStatus.FAILED
         for message in batch.messages:
-            if message.status == MessageStatus.QUEUED:
-                message.status = MessageStatus.FAILED
+            if message.external_id is not None:
+                continue
+            if message.status == MessageStatus.SUBMITTED:
+                continue
+            message.status = MessageStatus.FAILED
 
         await self._session.flush()

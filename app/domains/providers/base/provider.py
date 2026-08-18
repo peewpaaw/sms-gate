@@ -21,6 +21,7 @@ class ProviderMessage:
     msisdn: str
     text: str
     send_on: datetime | None
+    external_id: str | None = None
 
 
 @dataclass(frozen=True)

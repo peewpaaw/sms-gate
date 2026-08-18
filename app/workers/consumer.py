@@ -1,15 +1,17 @@
 """Consume send tasks and submit message batches to providers."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
+from typing import Any
 
 import aio_pika
 from aio_pika.abc import AbstractChannel, AbstractIncomingMessage
 from pydantic import ValidationError
 
 from app.db.session import async_session_factory
-from app.domains.mailing.enums import MessagesBatchStatus
 from app.domains.mailing.application.sending_service import MailingSendingService
 from app.domains.providers.base.exceptions import (
     ProviderPermanentError,
@@ -21,34 +23,48 @@ from app.messaging import topology
 from app.messaging.rabbitmq import connect, setup_topology
 from app.messaging.schemas import SendBatchTask
 
-
 logger = logging.getLogger(__name__)
 
 PREFETCH_COUNT = 10
 RECONNECT_SLEEP_SECONDS = 5.0
+MAX_RETRY_COUNT = 5
+RETRY_COUNT_HEADER = "x-retry-count"
 
 
 def _decode_task(message: AbstractIncomingMessage) -> SendBatchTask:
-    """Decode a queue message into a send task."""
     payload = json.loads(message.body.decode("utf-8"))
     return SendBatchTask.model_validate(payload)
 
 
-async def _publish_retry(channel: AbstractChannel, task: SendBatchTask) -> None:
-    """Publish a send task to the delayed retry queue."""
+def _retry_count(message: AbstractIncomingMessage) -> int:
+    headers = message.headers or {}
+    raw = headers.get(RETRY_COUNT_HEADER, 0)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 0
+
+
+async def _publish_task(
+    channel: AbstractChannel,
+    task: SendBatchTask,
+    *,
+    routing_key: str,
+    retry_count: int,
+) -> None:
     exchange = await channel.get_exchange(topology.MAILING_EXCHANGE)
     await exchange.publish(
         aio_pika.Message(
             body=task.model_dump_json().encode("utf-8"),
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             content_type="application/json",
+            headers={RETRY_COUNT_HEADER: retry_count},
         ),
-        routing_key=topology.SEND_BATCH_RETRY_ROUTING_KEY,
+        routing_key=routing_key,
     )
 
 
-def _build_provider_batch(batch_messages: list) -> ProviderBatch:
-    """Build provider input from queued domain messages."""
+def _build_provider_batch(batch_messages: list[Any]) -> ProviderBatch:
     return ProviderBatch(
         messages=[
             ProviderMessage(
@@ -56,6 +72,7 @@ def _build_provider_batch(batch_messages: list) -> ProviderBatch:
                 msisdn=message.msisdn,
                 text=message.text,
                 send_on=message.send_on,
+                external_id=message.external_id,
             )
             for message in batch_messages
         ]
@@ -64,85 +81,61 @@ def _build_provider_batch(batch_messages: list) -> ProviderBatch:
 
 async def send_task(task: SendBatchTask) -> None:
     """Send one queued batch through its provider and persist the result."""
-    logging.info("Sending task: %s", task)
+    logger.info("Sending task: %s", task)
+
     async with async_session_factory() as session:
         async with session.begin():
             service = MailingSendingService(session)
-            batch = await service.claim_for_sending(task.batch_id)
-
-            logger.info("claimed batch", extra={"task": str(task), "batch": batch})
-
+            batch = await service.begin_send(task.batch_id)
             if batch is None:
-                logger.warning("Batch not found", extra={"task": str(task)})
-                return
-
-            # Некорректный статус батча
-            if batch.status != MessagesBatchStatus.QUEUED:
                 logger.warning(
-                    "Batch not in expected status: %s",
-                    batch.status,
-                    extra={"task": str(task)},
+                    "Batch not claimable (missing or terminal)",
+                    extra={"batch_id": str(task.batch_id)},
                 )
                 return
-
-            logger.info(
-                "marking batch as sending", extra={"task": str(task), "batch": batch}
-            )
-            await service.mark_as_sending(batch)
-
             provider_batch = _build_provider_batch(batch.messages)
             batch_id = batch.id
 
-    # Все ок: обрабатываем батч (в статусе QUEUED -> SENDING)
     provider = await provider_registry.get(task.provider_code)
 
     try:
-        logger.info("sending batch to provider", extra={"task": str(task)})
+        logger.info("Sending batch to provider", extra={"batch_id": str(batch_id)})
         response = await provider.send(provider_batch)
     except ProviderPermanentError:
-        # Устанавливаем статус FAILED
-        # return -> ack
-        logger.info(
-            "marking batch as failed", extra={"task": str(task), "batch": batch}
+        logger.exception(
+            "Provider rejected send batch",
+            extra={"batch_id": str(batch_id)},
         )
         async with async_session_factory() as session:
             async with session.begin():
                 await MailingSendingService(session).mark_as_failed(batch_id)
-        logger.exception("Provider rejected send batch", extra={"task": str(task)})
         return
     except ProviderTemporaryError:
-        # Возвращаем статус QUEUED
-        # райзим ProviderTemporaryError -> уйдет в retry queue
-        logger.info(
-            "marking batch as failed", extra={"task": str(task), "batch": batch}
+        logger.exception(
+            "Provider temporary error, requeue batch",
+            extra={"batch_id": str(batch_id)},
         )
         async with async_session_factory() as session:
             async with session.begin():
                 await MailingSendingService(session).mark_as_queued(batch_id)
-        logger.exception("Provider temporary error", extra={"task": str(task)})
         raise
 
     async with async_session_factory() as session:
         async with session.begin():
-
             service = MailingSendingService(session)
-            logger.info(
-                "processing provider response",
-                extra={"task": str(task), "response": response},
-            )
-
             if not response.status:
                 await service.mark_as_failed(batch_id)
                 logger.error(
-                    "Provider returned failed send response", extra={"task": str(task)}
+                    "Provider returned failed send response",
+                    extra={"batch_id": str(batch_id)},
                 )
                 return
 
             is_full_response = await service.apply_send_response(batch_id, response)
             if not is_full_response:
                 logger.error(
-                    "Provider response does not match batch messages",
-                    extra={"task": str(task)},
+                    "Provider response does not cover all batch messages",
+                    extra={"batch_id": str(batch_id)},
                 )
 
 
@@ -150,7 +143,7 @@ async def handle_message(
     message: AbstractIncomingMessage, channel: AbstractChannel
 ) -> None:
     """Handle one RabbitMQ message from the send queue."""
-    logging.info("Handling message: %s", message.body)
+    logger.info("Handling message: %s", message.body)
     try:
         task = _decode_task(message)
     except (json.JSONDecodeError, ValidationError):
@@ -160,16 +153,57 @@ async def handle_message(
 
     try:
         await send_task(task)
-    except ProviderTemporaryError as e:
-        logger.warning(
-            "Task failed, will be retried", extra={"task": str(task), "error": e}
-        )
-        await _publish_retry(channel, task)
+    except ProviderTemporaryError as exc:
+        retry_count = _retry_count(message) + 1
+        if retry_count >= MAX_RETRY_COUNT:
+            logger.warning(
+                "Retry limit reached, moving to DLQ",
+                extra={"task": str(task), "error": str(exc)},
+            )
+            await _publish_task(
+                channel,
+                task,
+                routing_key=topology.SEND_BATCH_DEAD_ROUTING_KEY,
+                retry_count=retry_count,
+            )
+        else:
+            logger.warning(
+                "Task failed, will be retried",
+                extra={"task": str(task), "error": str(exc), "retry": retry_count},
+            )
+            await _publish_task(
+                channel,
+                task,
+                routing_key=topology.SEND_BATCH_RETRY_ROUTING_KEY,
+                retry_count=retry_count,
+            )
         await message.ack()
         return
-    except Exception:
-        logger.exception("Failed to process send task", extra={"task": str(task)})
-        await message.nack(requeue=True)
+    except Exception as exc:
+        retry_count = _retry_count(message) + 1
+        if retry_count >= MAX_RETRY_COUNT:
+            logger.exception(
+                "Unexpected error, moving to DLQ",
+                extra={"task": str(task), "error": str(exc)},
+            )
+            await _publish_task(
+                channel,
+                task,
+                routing_key=topology.SEND_BATCH_DEAD_ROUTING_KEY,
+                retry_count=retry_count,
+            )
+        else:
+            logger.exception(
+                "Unexpected error, will be retried",
+                extra={"task": str(task), "error": str(exc), "retry": retry_count},
+            )
+            await _publish_task(
+                channel,
+                task,
+                routing_key=topology.SEND_BATCH_RETRY_ROUTING_KEY,
+                retry_count=retry_count,
+            )
+        await message.ack()
         return
 
     await message.ack()
@@ -177,7 +211,7 @@ async def handle_message(
 
 async def consume() -> None:
     """Run the send consumer until the process is stopped."""
-    logging.info("Consumer-sender service has started")
+    logger.info("Consumer-sender service has started")
     while True:
         try:
             connection = await connect()
@@ -187,7 +221,7 @@ async def consume() -> None:
                 await setup_topology(channel)
 
                 queue = await channel.get_queue(topology.SEND_BATCH_QUEUE)
-                await queue.consume(lambda message: handle_message(message, channel))
+                await queue.consume(lambda msg: handle_message(msg, channel))
                 logger.info("Send consumer started")
                 await asyncio.Future()
         except asyncio.CancelledError:

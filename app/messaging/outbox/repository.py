@@ -1,16 +1,16 @@
-
-
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 from uuid import UUID
+
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.messaging.outbox.enums import OutboxStatus
 from app.messaging.outbox.models import Outbox
 from app.messaging.outbox.schemas import OutboxCreate
 
-# in seconds for next_retry_at
-RETRY_DELAY = 60 
+RETRY_DELAY = 60  # seconds for next_retry_at
+MAX_ATTEMPTS = 10
 
 
 class OutboxRepository:
@@ -40,6 +40,7 @@ class OutboxRepository:
                     Outbox.status == OutboxStatus.PENDING,
                     and_(
                         Outbox.status == OutboxStatus.FAILED,
+                        Outbox.attempts < MAX_ATTEMPTS,
                         Outbox.next_retry_at <= datetime.now(timezone.utc),
                     ),
                 )
@@ -57,10 +58,15 @@ class OutboxRepository:
         outbox.attempts += 1
         self.session.add(outbox)
         await self.session.flush()
-    
+
     async def mark_as_failed(self, outbox: Outbox) -> None:
         outbox.status = OutboxStatus.FAILED
         outbox.attempts += 1
-        outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(seconds=RETRY_DELAY)
+        if outbox.attempts >= MAX_ATTEMPTS:
+            outbox.next_retry_at = None
+        else:
+            outbox.next_retry_at = datetime.now(timezone.utc) + timedelta(
+                seconds=RETRY_DELAY
+            )
         self.session.add(outbox)
         await self.session.flush()
