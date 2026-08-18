@@ -20,7 +20,7 @@ from app.messaging.outbox.enums import OutboxEventType
 from app.messaging.outbox.models import Outbox
 from app.messaging.outbox.repository import OutboxRepository
 from app.messaging.rabbitmq import connect, setup_topology
-from app.messaging.schemas import SendBatchTask
+from app.messaging.schemas import GetMessageStatusTask, SendBatchTask
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,18 @@ async def _publish_payload(
 def _routing_key_for(outbox: Outbox) -> str:
     if outbox.event_type == OutboxEventType.SEND_BATCH:
         return topology.SEND_BATCH_ROUTING_KEY
+    if outbox.event_type == OutboxEventType.CHECK_STATUS:
+        return topology.STATUS_ROUTING_KEY
+    raise ValueError(f"Unsupported outbox event_type: {outbox.event_type}")
+
+
+def _validate_payload(outbox: Outbox) -> dict:
+    if outbox.event_type == OutboxEventType.SEND_BATCH:
+        return SendBatchTask.model_validate(outbox.payload).model_dump(mode="json")
+    if outbox.event_type == OutboxEventType.CHECK_STATUS:
+        return GetMessageStatusTask.model_validate(outbox.payload).model_dump(
+            mode="json"
+        )
     raise ValueError(f"Unsupported outbox event_type: {outbox.event_type}")
 
 
@@ -68,11 +80,11 @@ async def publish_once(channel: AbstractChannel) -> int:
                 row = rows[0]
                 try:
                     routing_key = _routing_key_for(row)
-                    task = SendBatchTask.model_validate(row.payload)
+                    payload = _validate_payload(row)
                     await _publish_payload(
                         channel,
                         routing_key=routing_key,
-                        payload=task.model_dump(mode="json"),
+                        payload=payload,
                     )
                     await repo.mark_as_published(row)
                     logger.info("Published outbox row %s", row.id)

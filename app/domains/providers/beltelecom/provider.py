@@ -1,13 +1,21 @@
 from typing import Any
+import logging
+
+from app.domains.providers.beltelecom.mapping import (
+    map_provider_status_to_mailing_status,
+)
+from app.domains.providers.base.exceptions import ProviderTemporaryError
 from ..base.provider import (
     ProviderBatch,
     ProviderOneMessageSendResponse,
     ProviderOneMessageStatusResponse,
     ProviderSendResponse,
     ProviderStatusResponse,
-    ProviderTemporaryError,
 )
 from .client import BeltelecomClient
+
+
+logger = logging.getLogger(__name__)
 
 
 class BeltelecomProvider:
@@ -68,11 +76,20 @@ class BeltelecomProvider:
 
         results: list[ProviderOneMessageStatusResponse] = []
         for msisdn in phone_list:
+            logger.info(
+                "Beltelecom msisdn status",
+                extra={
+                    "msisdn": msisdn,
+                    "status": msisdn.get("status"),
+                    "status_name": msisdn.get("statusName"),
+                },
+            )
             result = ProviderOneMessageStatusResponse(
                 message_id=None,
                 msisdn=msisdn.get("phoneNumber"),
-                code=msisdn.get("status"),
-                name=msisdn.get("statusName"),
+                status=map_provider_status_to_mailing_status(msisdn.get("status")),
+                # code=msisdn.get("status"),
+                # name=msisdn.get("statusName"),
             )
             results.append(result)
         return ProviderStatusResponse(

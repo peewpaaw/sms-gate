@@ -12,6 +12,10 @@ from app.domains.mailing.models import (
 )
 from app.domains.mailing.repositories import MessagesBatchRepository
 from app.domains.providers.base.provider import ProviderSendResponse
+from app.messaging.outbox.enums import OutboxEventType
+from app.messaging.outbox.repository import OutboxRepository
+from app.messaging.outbox.schemas import OutboxCreate
+from app.messaging.schemas import GetMessageStatusTask
 
 _TERMINAL_BATCH_STATUSES = frozenset(
     {
@@ -36,6 +40,7 @@ class MailingSendingService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._batch_repository = MessagesBatchRepository(session)
+        self._outbox_repository = OutboxRepository(session)
 
     async def begin_send(self, batch_id: UUID) -> MessagesBatch | None:
         """Lock batch and mark SENDING if QUEUED. Recover in-flight SENDING.
@@ -88,6 +93,16 @@ class MailingSendingService:
 
             message.external_id = external_id
             message.status = MessageStatus.SUBMITTED
+            await self._outbox_repository.create(
+                OutboxCreate(
+                    event_type=OutboxEventType.CHECK_STATUS,
+                    payload=GetMessageStatusTask(
+                        message_id=message.id,
+                        external_id=external_id,
+                        provider_code=batch.provider_code,
+                    ).model_dump(mode="json"),
+                )
+            )
 
         await self._session.flush()
         await self._maybe_mark_mailing_submitted(batch.mailing_id)
