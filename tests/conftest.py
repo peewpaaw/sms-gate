@@ -5,7 +5,9 @@ Override with env `TEST_DATABASE_URL` if needed. Default: `.../smsgate_test`.
 
 from __future__ import annotations
 
+import base64
 import os
+import secrets
 import subprocess
 import sys
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -19,14 +21,13 @@ _DEFAULT_TEST_DB_URL = (
 )
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL", _DEFAULT_TEST_DB_URL)
 
-import secrets
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 
 from app.db.session import async_session_factory, engine
-from app.domains.auth.services import hash_api_key
+from app.domains.auth.enums import UserRole
+from app.domains.auth.services import hash_password
 from app.domains.mailing.enums import MailingStatus, MessageStatus
 from app.domains.mailing.models import Mailing, Message
 from app.main import app
@@ -127,6 +128,45 @@ def _clean_tables() -> Iterator[None]:
     yield
 
 
+def basic_auth_header(email: str, password: str) -> dict[str, str]:
+    token = base64.b64encode(f"{email}:{password}".encode()).decode()
+    return {"Authorization": f"Basic {token}"}
+
+
+def _insert_user(
+    *,
+    email: str,
+    password: str,
+    role: UserRole,
+    name: str = "pytest",
+) -> dict[str, str]:
+    now = datetime.now(timezone.utc)
+    with _sync_engine.connect() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO "user" (
+                    id, is_active, password_hash, role, name, email, created_at, updated_at
+                )
+                VALUES (
+                    :id, true, :password_hash, :role, :name, :email, :created_at, :updated_at
+                )
+                """
+            ),
+            {
+                "id": uuid4(),
+                "password_hash": hash_password(password),
+                "role": role.value,
+                "name": name,
+                "email": email,
+                "created_at": now,
+                "updated_at": now,
+            },
+        )
+        conn.commit()
+    return basic_auth_header(email, password)
+
+
 @pytest.fixture(autouse=True)
 async def _dispose_db_engine() -> AsyncIterator[None]:
     yield
@@ -142,31 +182,18 @@ async def client() -> AsyncIterator[AsyncClient]:
 
 @pytest.fixture
 def auth_headers() -> dict[str, str]:
-    api_key = secrets.token_urlsafe(32)
-    now = datetime.now(timezone.utc)
-    with _sync_engine.connect() as conn:
-        conn.execute(
-            text(
-                """
-                INSERT INTO "user" (
-                    id, is_active, api_key_hash, name, email, created_at, updated_at
-                )
-                VALUES (
-                    :id, true, :api_key_hash, :name, :email, :created_at, :updated_at
-                )
-                """
-            ),
-            {
-                "id": uuid4(),
-                "api_key_hash": hash_api_key(api_key),
-                "name": "pytest",
-                "email": f"pytest-{uuid4()}@example.com",
-                "created_at": now,
-                "updated_at": now,
-            },
-        )
+    password = secrets.token_urlsafe(16)
+    email = f"pytest-{uuid4()}@example.com"
+    return _insert_user(email=email, password=password, role=UserRole.USER)
 
-    return {"X-API-Key": api_key}
+
+@pytest.fixture
+def admin_headers() -> dict[str, str]:
+    password = secrets.token_urlsafe(16)
+    email = f"admin-{uuid4()}@example.com"
+    return _insert_user(
+        email=email, password=password, role=UserRole.ADMIN, name="admin"
+    )
 
 
 @pytest.fixture

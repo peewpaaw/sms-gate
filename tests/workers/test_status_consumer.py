@@ -5,8 +5,9 @@ from uuid import uuid4
 import pytest
 
 from app.db.session import async_session_factory
+from app.domains.auth.enums import UserRole
 from app.domains.auth.models import User
-from app.domains.auth.services import hash_api_key
+from app.domains.auth.services import hash_password
 from app.domains.mailing.application.sending_service import MailingSendingService
 from app.domains.mailing.application.status_service import (
     MessageStatusService,
@@ -34,7 +35,8 @@ from sqlalchemy import select
 async def _seed_user() -> User:
     async with async_session_factory() as session:
         user = User(
-            api_key_hash=hash_api_key(f"status-{uuid4()}"),
+            password_hash=hash_password("test-password"),
+            role=UserRole.USER,
             name="status-test",
             email=f"status-{uuid4()}@example.com",
             is_active=True,

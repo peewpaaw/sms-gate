@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.deps import CurrentUserDep, SessionDep
+from app.deps import CurrentAdminDep, CurrentUserDep, SessionDep
 from app.domains.providers.repositories import ProviderRepository
 from app.domains.providers.schemas import (
     ProviderListResponse,
@@ -32,11 +32,11 @@ async def list_providers(
 @router.patch(
     "/{code}",
     summary="Обновить провайдер",
-    description="Изменение отображаемого имени и флага доступности.",
+    description="Изменение отображаемого имени и флага доступности. Только admin.",
 )
 async def update_provider(
     session: SessionDep,
-    _current_user: CurrentUserDep,
+    _admin: CurrentAdminDep,
     code: str,
     payload: ProviderUpdate,
 ) -> ProviderRead:

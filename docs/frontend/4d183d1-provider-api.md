@@ -8,7 +8,7 @@
 ## Общее
 
 - **Base path:** `/api/v1`
-- **Аутентификация:** заголовок `X-API-Key` (как у остальных методов).
+- **Аутентификация:** HTTP Basic (`Authorization: Basic …`, username = email). См. [users-basic-auth-api.md](./users-basic-auth-api.md)
 - **OpenAPI tag:** `providers`
 
 ## Breaking change: `GET /providers/`
@@ -57,7 +57,7 @@
 
 ### `PATCH /api/v1/providers/{code}`
 
-Частичное обновление записи в каталоге (имя, доступность для **новых** рассылок).
+Частичное обновление записи в каталоге (имя, доступность для **новых** рассылок). **Только admin.**
 
 **Path:** `code` — тот же идентификатор, что в `GET` (`fake`, `beltelecom`, …).
 
@@ -78,6 +78,7 @@
 
 | HTTP | `detail` | Когда |
 |------|----------|--------|
+| 403 | `Forbidden` | Не admin |
 | 404 | `Provider not found` | Нет такого `code` в БД |
 | 422 | `At least one of name or is_enabled must be set` | Пустой body |
 
