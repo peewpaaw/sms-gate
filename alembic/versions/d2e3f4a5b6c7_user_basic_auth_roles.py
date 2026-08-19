@@ -1,7 +1,7 @@
 """user basic auth and roles
 
-Revision ID: f1a2b3c4d5e6
-Revises: e7f8a9b0c1d2
+Revision ID: d2e3f4a5b6c7
+Revises: c2d3e4f5a6b7
 Create Date: 2026-08-17
 
 """
@@ -11,8 +11,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "f1a2b3c4d5e6"
-down_revision: Union[str, Sequence[str], None] = "e7f8a9b0c1d2"
+revision: str = "d2e3f4a5b6c7"
+down_revision: Union[str, Sequence[str], None] = "c2d3e4f5a6b7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

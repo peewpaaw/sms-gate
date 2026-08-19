@@ -29,7 +29,7 @@ async def test_create_mailing_with_empty_messages(
     data = await _create_mailing(
         client,
         auth_headers,
-        {"provider_code": "fake", "messages": []},
+        {"provider_code": "fake", "name": "test mailing", "messages": []},
     )
     assert data["status"] == MailingStatus.CREATED
     assert data["messages"] == []
@@ -41,7 +41,7 @@ async def test_create_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
 
@@ -55,6 +55,7 @@ async def test_create_message(
     assert message["msisdn"] == "375291234567"
     assert message["text"] == "nested create"
     assert message["status"] == MessageStatus.CREATED
+    assert "send_on" not in message
 
     get_mailing = await client.get(
         f"{API_PREFIX}/mailings/{mailing_id}",
@@ -69,7 +70,7 @@ async def test_get_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
     created = await client.post(
@@ -93,7 +94,7 @@ async def test_update_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
     created = await client.post(
@@ -120,7 +121,7 @@ async def test_delete_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
     created = await client.post(
@@ -149,7 +150,7 @@ async def test_get_message_not_found(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     response = await client.get(
         f"{API_PREFIX}/mailings/{mailing['id']}/messages/{uuid4()}",

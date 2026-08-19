@@ -1,7 +1,11 @@
 import uuid
+
+from app.domains.mailing.enums import MessageStatus
+
 from .base.provider import (
     ProviderBatch,
     ProviderOneMessageSendResponse,
+    ProviderOneMessageStatusResponse,
     ProviderSendResponse,
     ProviderStatusResponse,
 )
@@ -23,4 +27,13 @@ class FakeProvider:
         return ProviderSendResponse(status=True, messages=results)
 
     async def get_status(self, external_id: str) -> ProviderStatusResponse:
-        return ProviderStatusResponse(status="sent", messages_status=[])
+        return ProviderStatusResponse(
+            status="delivered",
+            messages_status=[
+                ProviderOneMessageStatusResponse(
+                    message_id=None,
+                    msisdn=None,
+                    status=MessageStatus.DELIVERED,
+                )
+            ],
+        )

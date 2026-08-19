@@ -11,7 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampedMixin
+from app.db.base import Base, TimestampedMixin, utcnow
 from app.domains.auth.models import User
 from .enums import (
     MailingStatus,
@@ -26,6 +26,10 @@ class Mailing(Base, TimestampedMixin):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     provider_code: Mapped[str] = mapped_column(
         String(100), ForeignKey("provider.code", ondelete="RESTRICT"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    send_on: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
     )
     status: Mapped[MailingStatus] = mapped_column(
         Enum(
@@ -62,9 +66,6 @@ class Message(Base, TimestampedMixin):
     )
     msisdn: Mapped[str] = mapped_column(String(15), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    send_on: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[MessageStatus] = mapped_column(
         Enum(
@@ -107,20 +108,3 @@ class MessagesBatch(Base, TimestampedMixin):
 
     messages = relationship("Message", back_populates="batch")
     mailing = relationship("Mailing", back_populates="batches")
-
-
-class MailingTemplate(Base, TimestampedMixin):
-    __tablename__ = "mailing_template"
-
-    id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    text: Mapped[str] = mapped_column(Text, nullable=False)
-
-    created_by_id: Mapped[UUID] = mapped_column(
-        ForeignKey("user.id", ondelete="RESTRICT"), nullable=False
-    )
-    updated_by_id: Mapped[UUID] = mapped_column(
-        ForeignKey("user.id", ondelete="RESTRICT"), nullable=False
-    )
-    created_by = relationship(User, foreign_keys=[created_by_id])
-    updated_by = relationship(User, foreign_keys=[updated_by_id])

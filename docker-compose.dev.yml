@@ -11,6 +11,8 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       ADMIN_EMAIL: root@example.com
       ADMIN_PASSWORD: root
+      BELTELECOM_USERNAME: ${BELTELECOM_USERNAME}
+      BELTELECOM_PASSWORD: ${BELTELECOM_PASSWORD}
     ports:
       - "8000:8000"
     volumes:
@@ -34,6 +36,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/smsgate
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      BELTELECOM_USERNAME: ${BELTELECOM_USERNAME}
+      BELTELECOM_PASSWORD: ${BELTELECOM_PASSWORD}
     volumes:
       - .:/app
     depends_on:
@@ -49,12 +53,31 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/smsgate
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      BELTELECOM_USERNAME: ${BELTELECOM_USERNAME}
+      BELTELECOM_PASSWORD: ${BELTELECOM_PASSWORD}
     volumes:
       - .:/app
     depends_on:
       backend:
         condition: service_healthy
     entrypoint: ["python", "-m", "app.workers.consumer"]
+
+  status-consumer:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/smsgate
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      BELTELECOM_USERNAME: ${BELTELECOM_USERNAME}
+      BELTELECOM_PASSWORD: ${BELTELECOM_PASSWORD}
+    volumes:
+      - .:/app
+    depends_on:
+      backend:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "app.workers.status_consumer"]
 
   postgres:
     image: postgres:17-alpine

@@ -17,7 +17,11 @@ class Settings(BaseSettings):
     beltelecom_password: str = ""
     beltelecom_timeout_sec: float = 15.0
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 def get_settings() -> Settings:
