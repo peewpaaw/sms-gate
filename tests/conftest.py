@@ -174,6 +174,7 @@ def mailing_payload() -> Callable[..., dict]:
     def _factory(**overrides: object) -> dict:
         payload: dict = {
             "provider_code": "fake",
+            "name": "test mailing",
             "messages": [
                 {"msisdn": "375291234567", "text": "test message"},
             ],

@@ -61,13 +61,14 @@ class MailingService:
 
         mailing = Mailing(
             provider_code=payload.provider_code,
+            name=payload.name,
+            send_on=payload.send_on,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
             messages=[
                 Message(
                     msisdn=item.msisdn,
                     text=item.text,
-                    send_on=item.send_on,
                 )
                 for item in payload.messages
             ],
@@ -96,6 +97,8 @@ class MailingService:
         )
 
         mailing.provider_code = payload.provider_code
+        mailing.name = payload.name
+        mailing.send_on = payload.send_on
         mailing.updated_by_id = updated_by_id
 
         if payload.messages is not None:
@@ -105,7 +108,6 @@ class MailingService:
                     Message(
                         msisdn=item.msisdn,
                         text=item.text,
-                        send_on=item.send_on,
                         mailing_id=mailing.id,
                     )
                 )

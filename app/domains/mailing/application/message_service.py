@@ -43,7 +43,6 @@ class MessageService:
         message = Message(
             msisdn=payload.msisdn,
             text=payload.text,
-            send_on=payload.send_on,
             mailing_id=mailing.id,
         )
         self._repo.add(message)
@@ -68,7 +67,6 @@ class MessageService:
 
         message.msisdn = payload.msisdn
         message.text = payload.text
-        message.send_on = payload.send_on
         mailing.updated_by_id = updated_by_id
 
         await self._session.flush()

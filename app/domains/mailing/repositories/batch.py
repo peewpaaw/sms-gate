@@ -41,7 +41,10 @@ class MessagesBatchRepository(SqlAlchemyRepository[MessagesBatch]):
         """Return one locked batch with messages for send processing."""
         query = (
             select(MessagesBatch)
-            .options(selectinload(MessagesBatch.messages))
+            .options(
+                selectinload(MessagesBatch.messages),
+                selectinload(MessagesBatch.mailing),
+            )
             .where(MessagesBatch.id == batch_id)
             .with_for_update()
         )

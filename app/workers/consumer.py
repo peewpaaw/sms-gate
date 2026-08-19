@@ -64,18 +64,19 @@ async def _publish_task(
     )
 
 
-def _build_provider_batch(batch_messages: list[Any]) -> ProviderBatch:
+def _build_provider_batch(batch: Any) -> ProviderBatch:
     return ProviderBatch(
+        name=batch.mailing.name,
+        send_on=batch.mailing.send_on,
         messages=[
             ProviderMessage(
                 message_id=message.id,
                 msisdn=message.msisdn,
                 text=message.text,
-                send_on=message.send_on,
                 external_id=message.external_id,
             )
-            for message in batch_messages
-        ]
+            for message in batch.messages
+        ],
     )
 
 
@@ -93,7 +94,7 @@ async def send_task(task: SendBatchTask) -> None:
                     extra={"batch_id": str(task.batch_id)},
                 )
                 return
-            provider_batch = _build_provider_batch(batch.messages)
+            provider_batch = _build_provider_batch(batch)
             batch_id = batch.id
 
     provider = await provider_registry.get(task.provider_code)
