@@ -41,8 +41,7 @@
 ```json
 {
   "msisdn": "+375 29 1234567",
-  "text": "Текст SMS",
-  "send_on": "2026-07-08T12:00:00+03:00"
+  "text": "Текст SMS"
 }
 ```
 
@@ -50,13 +49,23 @@
 |------|-------------|
 | `msisdn` | 9–16 символов; пробелы и `+` убираются, в ответе — только цифры |
 | `text` | 1–1600 символов |
-| `send_on` | опционально, ISO 8601 с timezone |
+
+### Создание / обновление рассылки
+
+| Поле | Ограничения |
+|------|-------------|
+| `provider_code` | обязательное |
+| `name` | 1–255 символов |
+| `send_on` | опционально, ISO 8601 с timezone; если не передали / `null` — текущее UTC |
+| `messages` | см. ниже |
 
 ### `MailingRead` (ответ GET/POST/PUT рассылки)
 
 ```json
 {
   "id": "uuid",
+  "name": "Название",
+  "send_on": "2026-07-08T12:00:00+03:00",
   "status": "created",
   "messages": [ { "...": "MessageRead" } ],
   "created_by": { "id": "uuid", "name": "", "email": "..." },
@@ -66,7 +75,7 @@
 }
 ```
 
-`MessageRead`: `id`, `msisdn`, `text`, `send_on`, `external_id`, `status`, `batch_id`.
+`MessageRead`: `id`, `msisdn`, `text`, `external_id`, `status`, `batch_id`.
 
 > **Замечание:** в текущем `MailingRead` нет поля `provider_code`. Для отображения провайдера после GET храните выбранный код на клиенте или запрашивайте доработку API.
 
@@ -93,11 +102,14 @@
 ```json
 {
   "provider_code": "fake",
+  "name": "Кампания",
+  "send_on": "2026-07-08T12:00:00+03:00",
   "messages": []
 }
 ```
 
 - `messages` **может быть пустым** `[]` — дальше получатели добавляются через `POST .../messages/`.
+- `send_on` опционален; без поля / `null` → текущее UTC.
 - Ответ **200** + `MailingRead`.
 - **422** по провайдеру: см. provider-api (`Unknown provider`, `Provider disabled`, `Provider is not configured on this server`).
 
@@ -113,13 +125,17 @@
 
 ```json
 {
-  "provider_code": "fake"
+  "provider_code": "fake",
+  "name": "Кампания",
+  "send_on": "2026-07-08T12:00:00+03:00"
 }
 ```
 
 | Поле в body | Поведение |
 |-------------|-----------|
 | `provider_code` | обязательное |
+| `name` | обязательное |
+| `send_on` | опционально; отсутствие / `null` → текущее UTC |
 | `messages` **отсутствует** | список сообщений **не меняется** |
 | `messages: []` | **полная очистка** всех message (старые id удаляются) |
 | `messages: [ {...}, ... ]` | **полная замена** списка (как при create, новые id у message) |
@@ -168,7 +184,7 @@
 
 ### `PUT .../messages/{message_id}`
 
-Полная замена полей (`msisdn`, `text`, `send_on`) — тело как при создании.
+Полная замена полей (`msisdn`, `text`) — тело как при создании.
 
 Условия: `mailing.status === 'created'` **и** `message.status === 'created'`.
 

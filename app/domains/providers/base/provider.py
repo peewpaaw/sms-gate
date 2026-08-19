@@ -18,7 +18,6 @@ class ProviderMessage:
     message_id: UUID
     msisdn: str
     text: str
-    send_on: datetime
     external_id: str | None = None
 
 
@@ -28,6 +27,7 @@ class ProviderBatch:
 
     messages: list[ProviderMessage]
     name: str
+    send_on: datetime
 
 
 #######################################

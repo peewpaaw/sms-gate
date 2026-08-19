@@ -67,12 +67,12 @@ async def _publish_task(
 def _build_provider_batch(batch: Any) -> ProviderBatch:
     return ProviderBatch(
         name=batch.mailing.name,
+        send_on=batch.mailing.send_on,
         messages=[
             ProviderMessage(
                 message_id=message.id,
                 msisdn=message.msisdn,
                 text=message.text,
-                send_on=message.send_on,
                 external_id=message.external_id,
             )
             for message in batch.messages
