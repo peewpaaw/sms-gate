@@ -9,3 +9,4 @@ class OutboxStatus(StrEnum):
 
 class OutboxEventType(StrEnum):
     SEND_BATCH = "mailing.send"
+    CHECK_STATUS = "mailing.status"

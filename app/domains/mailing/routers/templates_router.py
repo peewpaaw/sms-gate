@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.pagination import Page
 from app.deps import CurrentUserDep, SessionDep
-from app.domains.mailing.repositories import MailingTemplateRepository
+from app.domains.mailing.application.exceptions import TemplateNotFoundError
+from app.domains.mailing.application.template_service import TemplateService
 from app.domains.mailing.schemas import (
     MailingTemplateCreate,
     MailingTemplateRead,
@@ -25,9 +26,8 @@ async def list_mailing_templates(
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> Page[MailingTemplateRead]:
-    repository = MailingTemplateRepository(session)
-    templates = await repository.list(limit=limit, offset=offset)
-    total = await repository.count()
+    service = TemplateService(session)
+    templates, total = await service.list(limit=limit, offset=offset)
     return Page(
         total=total,
         limit=limit,
@@ -47,9 +47,11 @@ async def create_mailing_template(
     current_user: CurrentUserDep,
     payload: MailingTemplateCreate,
 ) -> MailingTemplateRead:
-    repository = MailingTemplateRepository(session)
-    template = await repository.create(payload, created_by_id=current_user.id)
-    return MailingTemplateRead.model_validate(template)
+    service = TemplateService(session)
+    template = await service.create(payload, created_by_id=current_user.id)
+    result = MailingTemplateRead.model_validate(template)
+    await session.commit()
+    return result
 
 
 @router.get(
@@ -61,10 +63,11 @@ async def get_mailing_template(
     _current_user: CurrentUserDep,
     template_id: UUID,
 ) -> MailingTemplateRead:
-    repository = MailingTemplateRepository(session)
-    template = await repository.get_by_id(template_id)
-    if template is None:
-        raise HTTPException(status_code=404, detail="Mailing template not found")
+    service = TemplateService(session)
+    try:
+        template = await service.get(template_id)
+    except TemplateNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing template not found") from None
     return MailingTemplateRead.model_validate(template)
 
 
@@ -79,13 +82,16 @@ async def update_mailing_template(
     template_id: UUID,
     payload: MailingTemplateUpdate,
 ) -> MailingTemplateRead:
-    repository = MailingTemplateRepository(session)
-    template = await repository.update(
-        template_id, payload, updated_by_id=current_user.id
-    )
-    if template is None:
-        raise HTTPException(status_code=404, detail="Mailing template not found")
-    return MailingTemplateRead.model_validate(template)
+    service = TemplateService(session)
+    try:
+        template = await service.update(
+            template_id, payload, updated_by_id=current_user.id
+        )
+    except TemplateNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing template not found") from None
+    result = MailingTemplateRead.model_validate(template)
+    await session.commit()
+    return result
 
 
 @router.delete(
@@ -98,8 +104,9 @@ async def delete_mailing_template(
     _current_user: CurrentUserDep,
     template_id: UUID,
 ) -> None:
-    repository = MailingTemplateRepository(session)
-    deleted = await repository.delete(template_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Mailing template not found")
-    await session.commit()
+    service = TemplateService(session)
+    try:
+        await service.delete(template_id)
+        await session.commit()
+    except TemplateNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing template not found") from None

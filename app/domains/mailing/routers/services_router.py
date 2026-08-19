@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from app.deps import CurrentUserDep
-from app.domains.mailing.services.sms_text_analysis import analyze_sms_text
+from app.domains.mailing.application.sms_text_analysis import analyze_sms_text
 from app.domains.mailing.schemas import (
     SmsTextAnalyzeRequest,
     SmsTextAnalyzeResponse,

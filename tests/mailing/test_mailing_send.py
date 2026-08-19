@@ -61,11 +61,13 @@ async def _count_outbox_for_batches(batch_ids: list[UUID]) -> list[Outbox]:
         rows = (
             await session.scalars(select(Outbox).order_by(Outbox.created_at.asc()))
         ).all()
-        matched = [
-            row
-            for row in rows
-            if UUID(str(row.payload.get("batch_id"))) in set(batch_ids)
-        ]
+        matched = []
+        for row in rows:
+            raw_batch_id = row.payload.get("batch_id")
+            if raw_batch_id is None:
+                continue
+            if UUID(str(raw_batch_id)) in set(batch_ids):
+                matched.append(row)
         for row in matched:
             session.expunge(row)
         return matched

@@ -54,6 +54,21 @@ services:
         condition: service_healthy
     entrypoint: ["python", "-m", "app.workers.consumer"]
 
+  status-consumer:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/smsgate
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+    volumes:
+      - .:/app
+    depends_on:
+      backend:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "app.workers.status_consumer"]
+
   postgres:
     image: postgres:17-alpine
     environment:

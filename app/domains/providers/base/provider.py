@@ -3,9 +3,7 @@ from datetime import datetime
 from uuid import UUID
 from typing import Protocol
 
-from .exceptions import (
-    ProviderTemporaryError,
-)
+from app.domains.mailing.enums import MessageStatus
 
 
 ######################################
@@ -21,6 +19,7 @@ class ProviderMessage:
     msisdn: str
     text: str
     send_on: datetime | None
+    external_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,16 +59,10 @@ class ProviderSendResponse:
 class ProviderOneMessageStatusResponse:
     """Status of one message"""
 
-    # TODO: при батче Белтелекома нет message_id. Один SID на несколько номеров.
-    # => идентификация только по msisdn + общий не несколько msisnd sid
+    # Beltelecom: no message_id, match by msisdn. Fake may omit both (single item).
     message_id: UUID | None
     msisdn: str | None
-    code: str
-    name: str
-
-    def __post_init__(self) -> None:
-        if self.message_id is None and self.msisdn is None:
-            raise ProviderTemporaryError("Message ID and phone number are missing")
+    status: MessageStatus
 
 
 @dataclass(frozen=True)

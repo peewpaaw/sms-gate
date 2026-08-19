@@ -22,9 +22,28 @@ class Outbox(Base, TimestampedMixin):
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
-    event_type: Mapped[OutboxEventType] = mapped_column(Enum(OutboxEventType, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
+    event_type: Mapped[OutboxEventType] = mapped_column(
+        Enum(
+            OutboxEventType,
+            native_enum=False,
+            length=32,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+    )
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    status: Mapped[OutboxStatus] = mapped_column(Enum(OutboxStatus, native_enum=False, values_callable=lambda x: [e.value for e in x]), nullable=False)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[OutboxStatus] = mapped_column(
+        Enum(
+            OutboxStatus,
+            native_enum=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    next_retry_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_retry_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

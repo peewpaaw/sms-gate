@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict
-from .models import MailingStatus
+
+from app.domains.mailing.models import MailingStatus
 
 
 class MailingFilter(BaseModel):
