@@ -11,7 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampedMixin
+from app.db.base import Base, TimestampedMixin, utcnow
 from app.domains.auth.models import User
 from .enums import (
     MailingStatus,
@@ -27,6 +27,7 @@ class Mailing(Base, TimestampedMixin):
     provider_code: Mapped[str] = mapped_column(
         String(100), ForeignKey("provider.code", ondelete="RESTRICT"), nullable=False
     )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[MailingStatus] = mapped_column(
         Enum(
             MailingStatus,
@@ -62,8 +63,8 @@ class Message(Base, TimestampedMixin):
     )
     msisdn: Mapped[str] = mapped_column(String(15), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    send_on: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+    send_on: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
     )
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[MessageStatus] = mapped_column(

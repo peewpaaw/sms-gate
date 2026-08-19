@@ -113,6 +113,7 @@ async def test_send_mailing_chunks_by_max_batch_size(
         auth_headers,
         {
             "provider_code": "fake",
+            "name": "test mailing",
             "messages": [
                 {"msisdn": "375291111111", "text": "one"},
                 {"msisdn": "375292222222", "text": "two"},
@@ -167,7 +168,7 @@ async def test_send_mailing_empty_messages(
     created = await _create_mailing(
         client,
         auth_headers,
-        {"provider_code": "fake", "messages": []},
+        {"provider_code": "fake", "name": "test mailing", "messages": []},
     )
 
     response = await _send_mailing(client, auth_headers, created["id"])

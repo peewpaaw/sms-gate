@@ -29,6 +29,7 @@ async def test_create_mailing(
 ) -> None:
     data = await _create_mailing(client, auth_headers, mailing_payload())
     assert data["status"] == MailingStatus.CREATED
+    assert data["name"] == "test mailing"
     assert len(data["messages"]) == 1
     assert data["messages"][0]["msisdn"] == "375291234567"
     assert data["messages"][0]["text"] == "test message"
@@ -96,6 +97,7 @@ async def test_update_mailing(
     old_message_id = created["messages"][0]["id"]
 
     updated_payload = mailing_payload(
+        name="updated mailing",
         messages=[
             {"msisdn": "+375 29 1112233", "text": "updated text"},
             {"msisdn": "375441112233", "text": "second"},
@@ -108,6 +110,7 @@ async def test_update_mailing(
     )
     assert response.status_code == 200, response.text
     data = response.json()
+    assert data["name"] == "updated mailing"
     assert len(data["messages"]) == 2
     msisdns = {m["msisdn"] for m in data["messages"]}
     assert msisdns == {"375291112233", "375441112233"}
@@ -129,7 +132,7 @@ async def test_update_mailing_without_messages_keeps_messages(
 
     response = await client.put(
         f"{API_PREFIX}/mailings/{mailing_id}",
-        json={"provider_code": "fake"},
+        json={"provider_code": "fake", "name": "test mailing"},
         headers=auth_headers,
     )
     assert response.status_code == 200, response.text
@@ -150,7 +153,7 @@ async def test_update_mailing_empty_messages_clears(
 
     response = await client.put(
         f"{API_PREFIX}/mailings/{mailing_id}",
-        json={"provider_code": "fake", "messages": []},
+        json={"provider_code": "fake", "name": "test mailing", "messages": []},
         headers=auth_headers,
     )
     assert response.status_code == 200, response.text

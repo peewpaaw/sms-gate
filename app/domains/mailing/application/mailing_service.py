@@ -61,6 +61,7 @@ class MailingService:
 
         mailing = Mailing(
             provider_code=payload.provider_code,
+            name=payload.name,
             created_by_id=created_by_id,
             updated_by_id=created_by_id,
             messages=[
@@ -96,6 +97,7 @@ class MailingService:
         )
 
         mailing.provider_code = payload.provider_code
+        mailing.name = payload.name
         mailing.updated_by_id = updated_by_id
 
         if payload.messages is not None:

@@ -1,7 +1,6 @@
 from typing import Any
 
 import httpx
-
 from ..base.exceptions import (
     ProviderPermanentError,
     ProviderTemporaryError,
@@ -22,7 +21,12 @@ class BeltelecomClient:
         self._timeout = timeout_sec
 
     async def get_csrf_token(self) -> str:
-        response = await self._request("GET", "/session/token", operation="token")
+        response = await self._request(
+            "GET",
+            "/session/token",
+            operation="token",
+            no_auth=True,
+        )
         token = response.text.strip()
         if not token:
             raise ProviderTemporaryError("Beltelecom returned empty CSRF token")
@@ -51,12 +55,18 @@ class BeltelecomClient:
         return response.json()
 
     async def _request(
-        self, method: str, path: str, *, operation: str, **kwargs: Any
+        self,
+        method: str,
+        path: str,
+        *,
+        operation: str,
+        no_auth: bool = False,
+        **kwargs: Any,
     ) -> httpx.Response:
         try:
             async with httpx.AsyncClient(
                 base_url=self._base_url,
-                auth=self._auth,
+                auth=self._auth if not no_auth else None,
                 timeout=self._timeout,
             ) as client:
                 response = await client.request(method=method, url=path, **kwargs)

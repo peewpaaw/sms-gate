@@ -55,6 +55,7 @@ async def _seed_submitted_message(
     async with async_session_factory() as session:
         mailing = Mailing(
             provider_code="fake",
+            name="test mailing",
             status=MailingStatus.QUEUED,
             created_by_id=user.id,
             updated_by_id=user.id,
@@ -177,6 +178,7 @@ async def test_apply_send_response_enqueues_check_status() -> None:
     async with async_session_factory() as session:
         mailing = Mailing(
             provider_code="fake",
+            name="test mailing",
             status=MailingStatus.QUEUED,
             created_by_id=user.id,
             updated_by_id=user.id,

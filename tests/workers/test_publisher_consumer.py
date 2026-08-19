@@ -74,6 +74,7 @@ async def _seed_batch(
     async with async_session_factory() as session:
         mailing = Mailing(
             provider_code="fake",
+            name="test mailing",
             status=MailingStatus.QUEUED,
             created_by_id=user.id,
             updated_by_id=user.id,
@@ -197,6 +198,7 @@ async def test_mailing_stays_queued_until_all_batches_submitted() -> None:
     async with async_session_factory() as session:
         mailing = Mailing(
             provider_code="fake",
+            name="test mailing",
             status=MailingStatus.QUEUED,
             created_by_id=user.id,
             updated_by_id=user.id,

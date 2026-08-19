@@ -50,7 +50,7 @@ class BeltelecomProvider:
 
             payload = {
                 "webform_id": "sms_rassylka",
-                "name": "",  # TODO: в описании есть понятие "Заголовок сообщения". У А1 - нет.
+                "name": batch.name,
                 "text": message.text,
                 "msisdn": message.msisdn,
                 "date_time": message.send_on.isoformat(),

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -5,6 +6,12 @@ from httpx import AsyncClient
 
 from app.domains.mailing.enums import MailingStatus, MessageStatus
 from tests.conftest import API_PREFIX, set_mailing_status, set_message_status
+
+
+def _assert_recent_utc(value: str) -> None:
+    parsed = datetime.fromisoformat(value)
+    delta = abs(datetime.now(timezone.utc) - parsed.astimezone(timezone.utc))
+    assert delta < timedelta(seconds=5)
 
 
 async def _create_mailing(
@@ -29,7 +36,7 @@ async def test_create_mailing_with_empty_messages(
     data = await _create_mailing(
         client,
         auth_headers,
-        {"provider_code": "fake", "messages": []},
+        {"provider_code": "fake", "name": "test mailing", "messages": []},
     )
     assert data["status"] == MailingStatus.CREATED
     assert data["messages"] == []
@@ -41,7 +48,7 @@ async def test_create_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
 
@@ -55,6 +62,7 @@ async def test_create_message(
     assert message["msisdn"] == "375291234567"
     assert message["text"] == "nested create"
     assert message["status"] == MessageStatus.CREATED
+    _assert_recent_utc(message["send_on"])
 
     get_mailing = await client.get(
         f"{API_PREFIX}/mailings/{mailing_id}",
@@ -64,12 +72,35 @@ async def test_create_message(
 
 
 @pytest.mark.asyncio
+async def test_create_message_with_send_on(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+) -> None:
+    mailing = await _create_mailing(
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
+    )
+    send_on = datetime(2026, 7, 8, 12, 0, tzinfo=timezone(timedelta(hours=3)))
+    response = await client.post(
+        f"{API_PREFIX}/mailings/{mailing['id']}/messages/",
+        json={
+            "msisdn": "375291234567",
+            "text": "scheduled",
+            "send_on": send_on.isoformat(),
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 201, response.text
+    stored = datetime.fromisoformat(response.json()["send_on"])
+    assert stored.astimezone(timezone.utc) == send_on.astimezone(timezone.utc)
+
+
+@pytest.mark.asyncio
 async def test_get_message(
     client: AsyncClient,
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
     created = await client.post(
@@ -93,7 +124,7 @@ async def test_update_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
     created = await client.post(
@@ -120,7 +151,7 @@ async def test_delete_message(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     mailing_id = mailing["id"]
     created = await client.post(
@@ -149,7 +180,7 @@ async def test_get_message_not_found(
     auth_headers: dict[str, str],
 ) -> None:
     mailing = await _create_mailing(
-        client, auth_headers, {"provider_code": "fake", "messages": []}
+        client, auth_headers, {"provider_code": "fake", "name": "test mailing", "messages": []}
     )
     response = await client.get(
         f"{API_PREFIX}/mailings/{mailing['id']}/messages/{uuid4()}",
