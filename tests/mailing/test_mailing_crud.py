@@ -139,6 +139,32 @@ async def test_list_mailings(
 
 
 @pytest.mark.asyncio
+async def test_list_mailings_search_by_name(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    match = await _create_mailing(
+        client, auth_headers, mailing_payload(name="Promo Alpha Wave")
+    )
+    await _create_mailing(
+        client, auth_headers, mailing_payload(name="Other Campaign")
+    )
+
+    response = await client.get(
+        f"{API_PREFIX}/mailings/",
+        params={"search": "alpha", "limit": 10, "offset": 0},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    page = response.json()
+    assert page["total"] == 1
+    assert len(page["items"]) == 1
+    assert page["items"][0]["id"] == match["id"]
+    assert page["items"][0]["name"] == "Promo Alpha Wave"
+
+
+@pytest.mark.asyncio
 async def test_update_mailing(
     client: AsyncClient,
     auth_headers: dict[str, str],

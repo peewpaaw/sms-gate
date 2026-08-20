@@ -46,6 +46,7 @@ class MailingRepository(SqlAlchemyRepository[Mailing]):
         self,
         *,
         status: MailingStatus | None = None,
+        search: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> Sequence[Mailing]:
@@ -60,17 +61,26 @@ class MailingRepository(SqlAlchemyRepository[Mailing]):
             )
             .order_by(Mailing.created_at.desc())
         )
-        if status is not None:
-            query = query.where(Mailing.status == status)
-
+        query = self._apply_filters(query, status=status, search=search)
         query = query.limit(limit).offset(offset)
         result = await self._session.execute(query)
         return result.scalars().all()
 
-    async def count(self, *, status: MailingStatus | None = None) -> int:
+    async def count(
+        self,
+        *,
+        status: MailingStatus | None = None,
+        search: str | None = None,
+    ) -> int:
         query = select(func.count()).select_from(Mailing)
-        if status is not None:
-            query = query.where(Mailing.status == status)
-
+        query = self._apply_filters(query, status=status, search=search)
         result = await self._session.execute(query)
         return result.scalar_one()
+
+    @staticmethod
+    def _apply_filters(query, *, status: MailingStatus | None, search: str | None):
+        if status is not None:
+            query = query.where(Mailing.status == status)
+        if search is not None and (term := search.strip()):
+            query = query.where(Mailing.name.ilike(f"%{term}%"))
+        return query

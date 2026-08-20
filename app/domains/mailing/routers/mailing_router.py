@@ -35,7 +35,7 @@ router.include_router(messages_router, prefix="/{mailing_id}/messages")
 @router.get(
     "/",
     summary="Список рассылок",
-    description="Пагинация и опциональный фильтр по статусу.",
+    description="Пагинация, опциональный фильтр по статусу и поиск по name.",
 )
 async def get_mailings(
     session: SessionDep,
@@ -47,6 +47,7 @@ async def get_mailings(
     service = MailingService(session)
     mailings, total = await service.list(
         status=filters.status,
+        search=filters.search,
         limit=limit,
         offset=offset,
     )

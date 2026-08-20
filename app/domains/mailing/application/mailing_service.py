@@ -39,13 +39,16 @@ class MailingService:
         self,
         *,
         status: MailingStatus | None = None,
+        search: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[Mailing], int]:
         mailings = list(
-            await self._repo.list(status=status, limit=limit, offset=offset)
+            await self._repo.list(
+                status=status, search=search, limit=limit, offset=offset
+            )
         )
-        total = await self._repo.count(status=status)
+        total = await self._repo.count(status=status, search=search)
         return mailings, total
 
     async def get(self, mailing_id: UUID) -> Mailing:

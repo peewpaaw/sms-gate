@@ -7,3 +7,4 @@ class MailingFilter(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: MailingStatus | None = None
+    search: str | None = None
