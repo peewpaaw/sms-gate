@@ -5,6 +5,9 @@ class MailingStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
     SUBMITTED = "submitted"
+    DELIVERED = "delivered"
+    UNDELIVERED = "undelivered"
+    FAILED = "failed"
 
 
 class MessageStatus(StrEnum):

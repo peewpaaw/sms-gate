@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.mailing.models import (
@@ -24,6 +24,13 @@ _TERMINAL_BATCH_STATUSES = frozenset(
         MessagesBatchStatus.FAILED,
         MessagesBatchStatus.COMPLETED,
         MessagesBatchStatus.PARTIALLY_FAILED,
+    }
+)
+_SEND_DONE_BATCH_STATUSES = frozenset(
+    {
+        MessagesBatchStatus.SUBMITTED,
+        MessagesBatchStatus.PARTIALLY_SUBMITTED,
+        MessagesBatchStatus.FAILED,
     }
 )
 _CLAIMABLE_BATCH_STATUSES = frozenset(
@@ -93,6 +100,7 @@ class MailingSendingService:
 
             message.external_id = external_id
             message.status = MessageStatus.SUBMITTED
+
             await self._outbox_repository.create(
                 OutboxCreate(
                     event_type=OutboxEventType.CHECK_STATUS,
@@ -107,29 +115,27 @@ class MailingSendingService:
         await self._session.flush()
         await self._maybe_mark_mailing_submitted(batch.mailing_id)
         return is_full_response
-
+    
     async def _maybe_mark_mailing_submitted(self, mailing_id: UUID) -> None:
-        """Promote mailing to SUBMITTED when every batch is SUBMITTED."""
+        """Close send-phase: SUBMITTED if any batch accepted, else FAILED."""
         mailing = await self._session.get(Mailing, mailing_id, with_for_update=True)
         if mailing is None or mailing.status != MailingStatus.QUEUED:
             return
 
-        total = await self._session.scalar(
-            select(func.count())
-            .select_from(MessagesBatch)
-            .where(MessagesBatch.mailing_id == mailing_id)
+        result = await self._session.execute(
+            select(MessagesBatch.status).where(MessagesBatch.mailing_id == mailing_id)
         )
-        submitted = await self._session.scalar(
-            select(func.count())
-            .select_from(MessagesBatch)
-            .where(
-                MessagesBatch.mailing_id == mailing_id,
-                MessagesBatch.status == MessagesBatchStatus.SUBMITTED,
-            )
-        )
-        if total and total == submitted:
+        statuses = list(result.scalars().all())
+        if not statuses:
+            return
+        if not all(status in _SEND_DONE_BATCH_STATUSES for status in statuses):
+            return
+
+        if all(status == MessagesBatchStatus.FAILED for status in statuses):
+            mailing.status = MailingStatus.FAILED
+        else:
             mailing.status = MailingStatus.SUBMITTED
-            await self._session.flush()
+        await self._session.flush()
 
     async def claim_for_sending(self, batch_id: UUID) -> MessagesBatch | None:
         """Claim a batch for sending."""
@@ -162,6 +168,7 @@ class MailingSendingService:
         if batch is None:
             return
 
+        mailing_id = batch.mailing_id
         batch.status = MessagesBatchStatus.FAILED
         for message in batch.messages:
             if message.external_id is not None:
@@ -171,3 +178,4 @@ class MailingSendingService:
             message.status = MessageStatus.FAILED
 
         await self._session.flush()
+        await self._maybe_mark_mailing_submitted(mailing_id)

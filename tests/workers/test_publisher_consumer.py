@@ -256,6 +256,112 @@ async def test_mailing_stays_queued_until_all_batches_submitted() -> None:
 
 
 @pytest.mark.asyncio
+async def test_mailing_submitted_when_one_batch_submitted_another_failed() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.QUEUED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch_ok = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=1,
+        )
+        batch_fail = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SENDING,
+            messages_count=1,
+        )
+        session.add_all([batch_ok, batch_fail])
+        await session.flush()
+        msg_fail = Message(
+            mailing_id=mailing.id,
+            batch_id=batch_fail.id,
+            msisdn="375291234567",
+            text="fail",
+            status=MessageStatus.QUEUED,
+        )
+        session.add(msg_fail)
+        await session.commit()
+        mailing_id, batch_fail_id = mailing.id, batch_fail.id
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MailingSendingService(session).mark_as_failed(batch_fail_id)
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        failed_batch = await session.get(MessagesBatch, batch_fail_id)
+        assert refreshed is not None
+        assert failed_batch is not None
+        assert failed_batch.status == MessagesBatchStatus.FAILED
+        assert refreshed.status == MailingStatus.SUBMITTED
+
+
+@pytest.mark.asyncio
+async def test_mailing_submitted_on_partially_submitted_batch() -> None:
+    mailing, batch, message = await _seed_batch(status=MessagesBatchStatus.SENDING)
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            session.add(
+                Message(
+                    mailing_id=mailing.id,
+                    batch_id=batch.id,
+                    msisdn="375297654321",
+                    text="no-ack",
+                    status=MessageStatus.QUEUED,
+                )
+            )
+            await session.flush()
+            is_full = await MailingSendingService(session).apply_send_response(
+                batch.id,
+                ProviderSendResponse(
+                    status=True,
+                    messages=[
+                        ProviderOneMessageSendResponse(
+                            message_id=message.id, external_id="ext-partial"
+                        ),
+                    ],
+                ),
+            )
+            assert is_full is False
+
+    async with async_session_factory() as session:
+        refreshed_batch = await session.get(MessagesBatch, batch.id)
+        refreshed_mailing = await session.get(Mailing, mailing.id)
+        assert refreshed_batch is not None
+        assert refreshed_mailing is not None
+        assert refreshed_batch.status == MessagesBatchStatus.PARTIALLY_SUBMITTED
+        assert refreshed_mailing.status == MailingStatus.SUBMITTED
+
+
+@pytest.mark.asyncio
+async def test_mailing_failed_when_all_batches_failed() -> None:
+    mailing, batch, _message = await _seed_batch(status=MessagesBatchStatus.SENDING)
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MailingSendingService(session).mark_as_failed(batch.id)
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing.id)
+        refreshed_batch = await session.get(MessagesBatch, batch.id)
+        assert refreshed is not None
+        assert refreshed_batch is not None
+        assert refreshed_batch.status == MessagesBatchStatus.FAILED
+        assert refreshed.status == MailingStatus.FAILED
+
+
+@pytest.mark.asyncio
 async def test_apply_send_response_terminal_noop() -> None:
     _, batch, message = await _seed_batch(status=MessagesBatchStatus.SUBMITTED)
 
