@@ -52,13 +52,14 @@ async def _seed_submitted_message(
     *,
     msisdn: str = "375291234567",
     status: MessageStatus = MessageStatus.SUBMITTED,
+    mailing_status: MailingStatus = MailingStatus.SUBMITTED,
 ) -> tuple[Mailing, MessagesBatch, Message]:
     user = await _seed_user()
     async with async_session_factory() as session:
         mailing = Mailing(
             provider_code="fake",
             name="test mailing",
-            status=MailingStatus.QUEUED,
+            status=mailing_status,
             created_by_id=user.id,
             updated_by_id=user.id,
         )
@@ -95,7 +96,7 @@ async def _seed_submitted_message(
 
 @pytest.mark.asyncio
 async def test_apply_status_submitted_to_delivered() -> None:
-    _, batch, message = await _seed_submitted_message()
+    mailing, batch, message = await _seed_submitted_message()
 
     async with async_session_factory() as session:
         async with session.begin():
@@ -117,17 +118,18 @@ async def test_apply_status_submitted_to_delivered() -> None:
     async with async_session_factory() as session:
         refreshed = await session.get(Message, message.id)
         refreshed_batch = await session.get(MessagesBatch, batch.id)
+        refreshed_mailing = await session.get(Mailing, mailing.id)
         assert refreshed is not None
         assert refreshed_batch is not None
+        assert refreshed_mailing is not None
         assert refreshed.status == MessageStatus.DELIVERED
         assert refreshed_batch.status == MessagesBatchStatus.COMPLETED
+        assert refreshed_mailing.status == MailingStatus.DELIVERED
 
 
 @pytest.mark.asyncio
 async def test_apply_status_no_regress_from_delivered() -> None:
-    _, _batch, message = await _seed_submitted_message(
-        status=MessageStatus.DELIVERED
-    )
+    _, _batch, message = await _seed_submitted_message(status=MessageStatus.DELIVERED)
 
     async with async_session_factory() as session:
         async with session.begin():
@@ -172,6 +174,398 @@ async def test_apply_status_anonymous_single_item() -> None:
                 ),
             )
             assert status == MessageStatus.DELIVERED
+
+
+@pytest.mark.asyncio
+async def test_mailing_delivered_when_all_messages_delivered() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.SUBMITTED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=2,
+        )
+        session.add(batch)
+        await session.flush()
+        msg_a = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375291111111",
+            text="a",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        msg_b = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375292222222",
+            text="b",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        session.add_all([msg_a, msg_b])
+        await session.commit()
+        mailing_id, msg_a_id, msg_b_id = mailing.id, msg_a.id, msg_b.id
+        msisdn_a, msisdn_b = msg_a.msisdn, msg_b.msisdn
+
+    for message_id, msisdn in ((msg_a_id, msisdn_a), (msg_b_id, msisdn_b)):
+        async with async_session_factory() as session:
+            async with session.begin():
+                await MessageStatusService(session).apply_status_response(
+                    message_id,
+                    ProviderStatusResponse(
+                        status="ok",
+                        messages_status=[
+                            ProviderOneMessageStatusResponse(
+                                message_id=None,
+                                msisdn=msisdn,
+                                status=MessageStatus.DELIVERED,
+                            )
+                        ],
+                    ),
+                )
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        assert refreshed is not None
+        assert refreshed.status == MailingStatus.DELIVERED
+
+
+@pytest.mark.asyncio
+async def test_mailing_delivered_when_one_delivered_one_failed() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.SUBMITTED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=2,
+        )
+        session.add(batch)
+        await session.flush()
+        msg_ok = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375291111111",
+            text="ok",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        msg_fail = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375292222222",
+            text="fail",
+            status=MessageStatus.FAILED,
+            external_id=None,
+        )
+        session.add_all([msg_ok, msg_fail])
+        await session.commit()
+        mailing_id, msg_ok_id, msisdn = mailing.id, msg_ok.id, msg_ok.msisdn
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MessageStatusService(session).apply_status_response(
+                msg_ok_id,
+                ProviderStatusResponse(
+                    status="ok",
+                    messages_status=[
+                        ProviderOneMessageStatusResponse(
+                            message_id=None,
+                            msisdn=msisdn,
+                            status=MessageStatus.DELIVERED,
+                        )
+                    ],
+                ),
+            )
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        assert refreshed is not None
+        assert refreshed.status == MailingStatus.DELIVERED
+
+
+@pytest.mark.asyncio
+async def test_mailing_undelivered_when_mix_undelivered_and_failed() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.SUBMITTED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=2,
+        )
+        session.add(batch)
+        await session.flush()
+        msg_undel = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375291111111",
+            text="undel",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        msg_fail = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375292222222",
+            text="fail",
+            status=MessageStatus.FAILED,
+            external_id=None,
+        )
+        session.add_all([msg_undel, msg_fail])
+        await session.commit()
+        mailing_id, msg_id, msisdn = mailing.id, msg_undel.id, msg_undel.msisdn
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MessageStatusService(session).apply_status_response(
+                msg_id,
+                ProviderStatusResponse(
+                    status="ok",
+                    messages_status=[
+                        ProviderOneMessageStatusResponse(
+                            message_id=None,
+                            msisdn=msisdn,
+                            status=MessageStatus.UNDELIVERED,
+                        )
+                    ],
+                ),
+            )
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        assert refreshed is not None
+        assert refreshed.status == MailingStatus.UNDELIVERED
+
+
+@pytest.mark.asyncio
+async def test_mailing_failed_when_all_messages_failed() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.SUBMITTED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=2,
+        )
+        session.add(batch)
+        await session.flush()
+        msg_a = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375291111111",
+            text="a",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        msg_b = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375292222222",
+            text="b",
+            status=MessageStatus.FAILED,
+            external_id=None,
+        )
+        session.add_all([msg_a, msg_b])
+        await session.commit()
+        mailing_id, msg_a_id, msisdn = mailing.id, msg_a.id, msg_a.msisdn
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MessageStatusService(session).apply_status_response(
+                msg_a_id,
+                ProviderStatusResponse(
+                    status="ok",
+                    messages_status=[
+                        ProviderOneMessageStatusResponse(
+                            message_id=None,
+                            msisdn=msisdn,
+                            status=MessageStatus.FAILED,
+                        )
+                    ],
+                ),
+            )
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        assert refreshed is not None
+        assert refreshed.status == MailingStatus.FAILED
+
+
+@pytest.mark.asyncio
+async def test_mailing_stays_submitted_while_message_pending() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.SUBMITTED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=2,
+        )
+        session.add(batch)
+        await session.flush()
+        msg_done = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375291111111",
+            text="done",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        msg_pending = Message(
+            mailing_id=mailing.id,
+            batch_id=batch.id,
+            msisdn="375292222222",
+            text="pending",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        session.add_all([msg_done, msg_pending])
+        await session.commit()
+        mailing_id, msg_done_id, msisdn = mailing.id, msg_done.id, msg_done.msisdn
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MessageStatusService(session).apply_status_response(
+                msg_done_id,
+                ProviderStatusResponse(
+                    status="ok",
+                    messages_status=[
+                        ProviderOneMessageStatusResponse(
+                            message_id=None,
+                            msisdn=msisdn,
+                            status=MessageStatus.DELIVERED,
+                        )
+                    ],
+                ),
+            )
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        assert refreshed is not None
+        assert refreshed.status == MailingStatus.SUBMITTED
+
+
+@pytest.mark.asyncio
+async def test_mailing_stays_submitted_until_all_batches_terminal() -> None:
+    user = await _seed_user()
+    async with async_session_factory() as session:
+        mailing = Mailing(
+            provider_code="fake",
+            name="test mailing",
+            status=MailingStatus.SUBMITTED,
+            created_by_id=user.id,
+            updated_by_id=user.id,
+        )
+        session.add(mailing)
+        await session.flush()
+        batch_a = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=1,
+        )
+        batch_b = MessagesBatch(
+            mailing_id=mailing.id,
+            provider_code="fake",
+            status=MessagesBatchStatus.SUBMITTED,
+            messages_count=1,
+        )
+        session.add_all([batch_a, batch_b])
+        await session.flush()
+        msg_a = Message(
+            mailing_id=mailing.id,
+            batch_id=batch_a.id,
+            msisdn="375291111111",
+            text="a",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        msg_b = Message(
+            mailing_id=mailing.id,
+            batch_id=batch_b.id,
+            msisdn="375292222222",
+            text="b",
+            status=MessageStatus.SUBMITTED,
+            external_id=str(uuid4()),
+        )
+        session.add_all([msg_a, msg_b])
+        await session.commit()
+        mailing_id = mailing.id
+        batch_a_id = batch_a.id
+        msg_a_id = msg_a.id
+        msisdn = msg_a.msisdn
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            await MessageStatusService(session).apply_status_response(
+                msg_a_id,
+                ProviderStatusResponse(
+                    status="ok",
+                    messages_status=[
+                        ProviderOneMessageStatusResponse(
+                            message_id=None,
+                            msisdn=msisdn,
+                            status=MessageStatus.DELIVERED,
+                        )
+                    ],
+                ),
+            )
+
+    async with async_session_factory() as session:
+        refreshed = await session.get(Mailing, mailing_id)
+        batch_a_ref = await session.get(MessagesBatch, batch_a_id)
+        assert refreshed is not None
+        assert batch_a_ref is not None
+        assert batch_a_ref.status == MessagesBatchStatus.COMPLETED
+        assert refreshed.status == MailingStatus.SUBMITTED
 
 
 @pytest.mark.asyncio
@@ -257,9 +651,7 @@ async def test_check_status_raises_not_ready_when_still_submitted(monkeypatch) -
     async def fake_get(code: str):
         return StickyProvider()
 
-    monkeypatch.setattr(
-        "app.workers.status_consumer.provider_registry.get", fake_get
-    )
+    monkeypatch.setattr("app.workers.status_consumer.provider_registry.get", fake_get)
 
     with pytest.raises(StatusNotReady):
         await check_status(
@@ -297,9 +689,7 @@ async def test_check_status_completes_when_delivered(monkeypatch) -> None:
     async def fake_get(code: str):
         return DoneProvider()
 
-    monkeypatch.setattr(
-        "app.workers.status_consumer.provider_registry.get", fake_get
-    )
+    monkeypatch.setattr("app.workers.status_consumer.provider_registry.get", fake_get)
 
     await check_status(
         GetMessageStatusTask(

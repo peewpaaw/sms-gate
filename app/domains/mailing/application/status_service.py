@@ -4,6 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domains.mailing.models import (
+    Mailing,
+    MailingStatus,
     Message,
     MessageStatus,
     MessagesBatch,
@@ -62,8 +64,10 @@ class MessageStatusService:
             message.status = new_status
             await self._session.flush()
 
+        mailing_id = message.mailing_id
         if message.batch_id is not None:
             await self._maybe_complete_batch(message.batch_id)
+        await self._maybe_complete_mailing(mailing_id)
 
         return message.status
 
@@ -131,6 +135,32 @@ class MessageStatusService:
             batch.status = MessagesBatchStatus.FAILED
         else:
             batch.status = MessagesBatchStatus.PARTIALLY_FAILED
+
+        await self._session.flush()
+
+    async def _maybe_complete_mailing(self, mailing_id: UUID) -> None:
+        mailing = await self._session.get(
+            Mailing, mailing_id, with_for_update=True
+        )
+        if mailing is None or mailing.status != MailingStatus.SUBMITTED:
+            return
+
+        result = await self._session.execute(
+            select(Message.status).where(Message.mailing_id == mailing_id)
+        )
+        statuses = list(result.scalars().all())
+        if not statuses:
+            return
+        if not all(status in TERMINAL_MESSAGE_STATUSES for status in statuses):
+            return
+
+        status_set = set(statuses)
+        if MessageStatus.DELIVERED in status_set:
+            mailing.status = MailingStatus.DELIVERED
+        elif MessageStatus.UNDELIVERED in status_set:
+            mailing.status = MailingStatus.UNDELIVERED
+        else:
+            mailing.status = MailingStatus.FAILED
 
         await self._session.flush()
 
