@@ -8,3 +8,9 @@ class MailingFilter(BaseModel):
 
     status: MailingStatus | None = None
     search: str | None = None
+
+
+class TemplateFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    search: str | None = None

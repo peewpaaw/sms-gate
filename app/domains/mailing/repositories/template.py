@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.domains.mailing.models import MailingTemplate
@@ -26,6 +26,7 @@ class MailingTemplateRepository(SqlAlchemyRepository[MailingTemplate]):
     async def list(
         self,
         *,
+        search: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> Sequence[MailingTemplate]:
@@ -36,14 +37,26 @@ class MailingTemplateRepository(SqlAlchemyRepository[MailingTemplate]):
                 selectinload(MailingTemplate.updated_by),
             )
             .order_by(MailingTemplate.created_at.desc())
-            .limit(limit)
-            .offset(offset)
         )
+        query = self._apply_filters(query, search=search)
+        query = query.limit(limit).offset(offset)
         result = await self._session.execute(query)
         return result.scalars().all()
 
-    async def count(self) -> int:
-        result = await self._session.execute(
-            select(func.count()).select_from(MailingTemplate)
-        )
+    async def count(self, *, search: str | None = None) -> int:
+        query = select(func.count()).select_from(MailingTemplate)
+        query = self._apply_filters(query, search=search)
+        result = await self._session.execute(query)
         return result.scalar_one()
+
+    @staticmethod
+    def _apply_filters(query, *, search: str | None):
+        if search is not None and (term := search.strip()):
+            pattern = f"%{term}%"
+            query = query.where(
+                or_(
+                    MailingTemplate.name.ilike(pattern),
+                    MailingTemplate.text.ilike(pattern),
+                )
+            )
+        return query

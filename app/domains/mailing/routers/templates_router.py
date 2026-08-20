@@ -1,11 +1,13 @@
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.pagination import Page
 from app.deps import CurrentUserDep, SessionDep
 from app.domains.mailing.application.exceptions import TemplateNotFoundError
 from app.domains.mailing.application.template_service import TemplateService
+from app.domains.mailing.filters import TemplateFilter
 from app.domains.mailing.schemas import (
     MailingTemplateCreate,
     MailingTemplateRead,
@@ -18,16 +20,21 @@ router = APIRouter(prefix="/templates", tags=["templates"])
 @router.get(
     "/",
     summary="Список шаблонов",
-    description="Пагинация по всем шаблонам.",
+    description="Пагинация и опциональный поиск по name/text.",
 )
 async def list_mailing_templates(
     session: SessionDep,
     _current_user: CurrentUserDep,
+    filters: Annotated[TemplateFilter, Depends()],
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> Page[MailingTemplateRead]:
     service = TemplateService(session)
-    templates, total = await service.list(limit=limit, offset=offset)
+    templates, total = await service.list(
+        search=filters.search,
+        limit=limit,
+        offset=offset,
+    )
     return Page(
         total=total,
         limit=limit,

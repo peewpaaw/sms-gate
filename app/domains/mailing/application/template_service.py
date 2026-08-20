@@ -16,11 +16,14 @@ class TemplateService:
     async def list(
         self,
         *,
+        search: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[MailingTemplate], int]:
-        templates = list(await self._repo.list(limit=limit, offset=offset))
-        total = await self._repo.count()
+        templates = list(
+            await self._repo.list(search=search, limit=limit, offset=offset)
+        )
+        total = await self._repo.count(search=search)
         return templates, total
 
     async def get(self, template_id: UUID) -> MailingTemplate:
