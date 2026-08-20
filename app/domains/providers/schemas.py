@@ -1,6 +1,13 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ProviderBrief(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    code: str
+    name: str
+
+
 class ProviderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.db.base import utcnow
 from app.domains.auth.schemas import UserRead
 from app.domains.mailing.models import MailingStatus, MessageStatus
+from app.domains.providers.schemas import ProviderBrief
 
 
 class MessageCreate(BaseModel):
@@ -73,6 +74,8 @@ class MailingRead(BaseModel):
     id: UUID
     name: str
     send_on: datetime
+    provider_code: str
+    provider: ProviderBrief
     status: MailingStatus
     messages: list[MessageRead]
     created_by: UserRead

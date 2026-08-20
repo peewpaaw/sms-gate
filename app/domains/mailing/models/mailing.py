@@ -13,6 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampedMixin, utcnow
 from app.domains.auth.models import User
+from app.domains.providers.models import Provider
 from .enums import (
     MailingStatus,
     MessageStatus,
@@ -53,6 +54,7 @@ class Mailing(Base, TimestampedMixin):
     batches = relationship(
         "MessagesBatch", back_populates="mailing", cascade="all, delete-orphan"
     )
+    provider: Mapped[Provider] = relationship(foreign_keys=[provider_code])
     created_by = relationship(User, foreign_keys=[created_by_id])
     updated_by = relationship(User, foreign_keys=[updated_by_id])
 

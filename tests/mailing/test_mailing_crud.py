@@ -37,6 +37,8 @@ async def test_create_mailing(
     data = await _create_mailing(client, auth_headers, mailing_payload())
     assert data["status"] == MailingStatus.CREATED
     assert data["name"] == "test mailing"
+    assert data["provider_code"] == "fake"
+    assert data["provider"] == {"code": "fake", "name": "Fake (dev)"}
     _assert_recent_utc(data["send_on"])
     assert len(data["messages"]) == 1
     assert data["messages"][0]["msisdn"] == "375291234567"

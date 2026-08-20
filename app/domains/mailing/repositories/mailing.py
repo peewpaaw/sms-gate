@@ -17,6 +17,7 @@ class MailingRepository(SqlAlchemyRepository[Mailing]):
             .options(
                 selectinload(Mailing.messages),
                 selectinload(Mailing.batches),
+                selectinload(Mailing.provider),
                 selectinload(Mailing.created_by),
                 selectinload(Mailing.updated_by),
             )
@@ -31,6 +32,7 @@ class MailingRepository(SqlAlchemyRepository[Mailing]):
             .options(
                 selectinload(Mailing.messages),
                 selectinload(Mailing.batches),
+                selectinload(Mailing.provider),
                 selectinload(Mailing.created_by),
                 selectinload(Mailing.updated_by),
             )
@@ -52,6 +54,7 @@ class MailingRepository(SqlAlchemyRepository[Mailing]):
             .options(
                 selectinload(Mailing.messages),
                 selectinload(Mailing.batches),
+                selectinload(Mailing.provider),
                 selectinload(Mailing.created_by),
                 selectinload(Mailing.updated_by),
             )
