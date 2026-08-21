@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta, timezone
+import secrets
 from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
 
+from app.domains.auth.enums import UserRole
 from app.domains.mailing.enums import MailingStatus
-from tests.conftest import API_PREFIX, set_mailing_status
+from tests.conftest import API_PREFIX, _insert_user, set_mailing_status
 
 
 def _assert_recent_utc(value: str) -> None:
@@ -320,6 +322,130 @@ async def test_delete_mailing_not_found(
     response = await client.delete(
         f"{API_PREFIX}/mailings/{uuid4()}",
         headers=auth_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Mailing not found"
+
+
+def _other_user_headers() -> dict[str, str]:
+    return _insert_user(
+        email=f"other-{uuid4()}@example.com",
+        password=secrets.token_urlsafe(16),
+        role=UserRole.USER,
+        name="other",
+    )
+
+
+@pytest.mark.asyncio
+async def test_list_mailings_user_sees_only_own(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    own = await _create_mailing(client, auth_headers, mailing_payload(name="mine"))
+    other_headers = _other_user_headers()
+    await _create_mailing(client, other_headers, mailing_payload(name="theirs"))
+
+    response = await client.get(
+        f"{API_PREFIX}/mailings/",
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    page = response.json()
+    assert page["total"] == 1
+    assert len(page["items"]) == 1
+    assert page["items"][0]["id"] == own["id"]
+
+
+@pytest.mark.asyncio
+async def test_list_mailings_admin_sees_all(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    admin_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    first = await _create_mailing(client, auth_headers, mailing_payload(name="u1"))
+    other_headers = _other_user_headers()
+    second = await _create_mailing(
+        client, other_headers, mailing_payload(name="u2")
+    )
+
+    response = await client.get(
+        f"{API_PREFIX}/mailings/",
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    page = response.json()
+    ids = {item["id"] for item in page["items"]}
+    assert page["total"] >= 2
+    assert first["id"] in ids
+    assert second["id"] in ids
+
+
+@pytest.mark.asyncio
+async def test_get_mailing_foreign_returns_404(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    created = await _create_mailing(client, auth_headers, mailing_payload())
+    other_headers = _other_user_headers()
+
+    response = await client.get(
+        f"{API_PREFIX}/mailings/{created['id']}",
+        headers=other_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Mailing not found"
+
+
+@pytest.mark.asyncio
+async def test_get_mailing_admin_sees_foreign(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    admin_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    created = await _create_mailing(client, auth_headers, mailing_payload())
+
+    response = await client.get(
+        f"{API_PREFIX}/mailings/{created['id']}",
+        headers=admin_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+
+
+@pytest.mark.asyncio
+async def test_update_mailing_foreign_returns_404(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    created = await _create_mailing(client, auth_headers, mailing_payload())
+    other_headers = _other_user_headers()
+
+    response = await client.put(
+        f"{API_PREFIX}/mailings/{created['id']}",
+        json=mailing_payload(name="hijack"),
+        headers=other_headers,
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Mailing not found"
+
+
+@pytest.mark.asyncio
+async def test_delete_mailing_foreign_returns_404(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    created = await _create_mailing(client, auth_headers, mailing_payload())
+    other_headers = _other_user_headers()
+
+    response = await client.delete(
+        f"{API_PREFIX}/mailings/{created['id']}",
+        headers=other_headers,
     )
     assert response.status_code == 404
     assert response.json()["detail"] == "Mailing not found"

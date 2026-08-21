@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
+from uuid import UUID
 
 from sqlalchemy import Date, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,6 +23,7 @@ class MessageStatsRepository:
         timezone_name: str,
         provider_codes: Sequence[str] | None = None,
         statuses: Sequence[MessageStatus] | None = None,
+        created_by_id: UUID | None = None,
     ) -> list[MessageProviderStatsItem]:
         local_day = func.date_trunc(
             "day",
@@ -52,6 +54,8 @@ class MessageStatsRepository:
             query = query.where(Mailing.provider_code.in_(provider_codes))
         if statuses:
             query = query.where(Message.status.in_(statuses))
+        if created_by_id is not None:
+            query = query.where(Mailing.created_by_id == created_by_id)
 
         result = await self.session.execute(query)
         items: list[MessageProviderStatsItem] = []

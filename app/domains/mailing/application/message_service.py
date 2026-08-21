@@ -19,15 +19,33 @@ class MessageService:
         self._repo = MessageRepository(session)
         self._mailing_repo = MailingRepository(session)
 
-    async def _require_mailing_created(self, mailing_id: UUID) -> Mailing:
-        mailing = await self._mailing_repo.get_for_update(mailing_id)
+    async def _require_mailing_created(
+        self,
+        mailing_id: UUID,
+        *,
+        created_by_id: UUID | None = None,
+    ) -> Mailing:
+        mailing = await self._mailing_repo.get_for_update(
+            mailing_id, created_by_id=created_by_id
+        )
         if mailing is None:
             raise MailingNotFoundError
         if mailing.status != MailingStatus.CREATED:
             raise MailingStatusUpdateForbiddenError
         return mailing
 
-    async def get(self, mailing_id: UUID, message_id: UUID) -> Message:
+    async def get(
+        self,
+        mailing_id: UUID,
+        message_id: UUID,
+        *,
+        created_by_id: UUID | None = None,
+    ) -> Message:
+        mailing = await self._mailing_repo.get_by_id(
+            mailing_id, created_by_id=created_by_id
+        )
+        if mailing is None:
+            raise MailingNotFoundError
         message = await self._repo.get(mailing_id, message_id)
         if message is None:
             raise MessageNotFoundError
@@ -38,8 +56,12 @@ class MessageService:
         mailing_id: UUID,
         payload: MessageCreate,
         updated_by_id: UUID,
+        *,
+        created_by_id: UUID | None = None,
     ) -> Message:
-        mailing = await self._require_mailing_created(mailing_id)
+        mailing = await self._require_mailing_created(
+            mailing_id, created_by_id=created_by_id
+        )
         message = Message(
             msisdn=payload.msisdn,
             text=payload.text,
@@ -57,8 +79,12 @@ class MessageService:
         message_id: UUID,
         payload: MessageUpdate,
         updated_by_id: UUID,
+        *,
+        created_by_id: UUID | None = None,
     ) -> Message:
-        mailing = await self._require_mailing_created(mailing_id)
+        mailing = await self._require_mailing_created(
+            mailing_id, created_by_id=created_by_id
+        )
         message = await self._repo.get_for_update(mailing_id, message_id)
         if message is None:
             raise MessageNotFoundError
@@ -78,8 +104,12 @@ class MessageService:
         mailing_id: UUID,
         message_id: UUID,
         updated_by_id: UUID,
+        *,
+        created_by_id: UUID | None = None,
     ) -> None:
-        mailing = await self._require_mailing_created(mailing_id)
+        mailing = await self._require_mailing_created(
+            mailing_id, created_by_id=created_by_id
+        )
         message = await self._repo.get_for_update(mailing_id, message_id)
         if message is None:
             raise MessageNotFoundError

@@ -40,19 +40,28 @@ class MailingService:
         *,
         status: MailingStatus | None = None,
         search: str | None = None,
+        created_by_id: UUID | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[Mailing], int]:
         mailings = list(
             await self._repo.list(
-                status=status, search=search, limit=limit, offset=offset
+                status=status,
+                search=search,
+                created_by_id=created_by_id,
+                limit=limit,
+                offset=offset,
             )
         )
-        total = await self._repo.count(status=status, search=search)
+        total = await self._repo.count(
+            status=status, search=search, created_by_id=created_by_id
+        )
         return mailings, total
 
-    async def get(self, mailing_id: UUID) -> Mailing:
-        mailing = await self._repo.get_by_id(mailing_id)
+    async def get(
+        self, mailing_id: UUID, *, created_by_id: UUID | None = None
+    ) -> Mailing:
+        mailing = await self._repo.get_by_id(mailing_id, created_by_id=created_by_id)
         if mailing is None:
             raise MailingNotFoundError
         return mailing
@@ -88,8 +97,12 @@ class MailingService:
         mailing_id: UUID,
         payload: MailingUpdate,
         updated_by_id: UUID,
+        *,
+        created_by_id: UUID | None = None,
     ) -> Mailing:
-        mailing = await self._repo.get_for_update(mailing_id)
+        mailing = await self._repo.get_for_update(
+            mailing_id, created_by_id=created_by_id
+        )
         if mailing is None:
             raise MailingNotFoundError
         if mailing.status != MailingStatus.CREATED:
@@ -120,8 +133,12 @@ class MailingService:
         assert updated is not None
         return updated
 
-    async def delete(self, mailing_id: UUID) -> None:
-        mailing = await self._repo.get_for_update(mailing_id)
+    async def delete(
+        self, mailing_id: UUID, *, created_by_id: UUID | None = None
+    ) -> None:
+        mailing = await self._repo.get_for_update(
+            mailing_id, created_by_id=created_by_id
+        )
         if mailing is None:
             raise MailingNotFoundError
         if mailing.status != MailingStatus.CREATED:
@@ -130,12 +147,16 @@ class MailingService:
         await self._repo.delete(mailing)
         await self._session.flush()
 
-    async def publish(self, mailing_id: UUID) -> None:
+    async def publish(
+        self, mailing_id: UUID, *, created_by_id: UUID | None = None
+    ) -> None:
         """Lock mailing, create batches, write outbox rows, set QUEUED statuses.
 
         Does not commit — caller owns the transaction boundary.
         """
-        mailing = await self._repo.get_for_update(mailing_id)
+        mailing = await self._repo.get_for_update(
+            mailing_id, created_by_id=created_by_id
+        )
         if mailing is None:
             raise MailingNotFoundError
 

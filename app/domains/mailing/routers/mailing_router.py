@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.pagination import Page
-from app.deps import SessionDep, CurrentUserDep
+from app.deps import SessionDep, CurrentUserDep, owner_scope
 from app.domains.mailing.application.exceptions import (
     MailingBatchesNotEmptyError,
     MailingMessagesEmptyError,
@@ -39,7 +39,7 @@ router.include_router(messages_router, prefix="/{mailing_id}/messages")
 )
 async def get_mailings(
     session: SessionDep,
-    _current_user: CurrentUserDep,
+    current_user: CurrentUserDep,
     filters: Annotated[MailingFilter, Depends()],
     limit: int = Query(default=50, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
@@ -48,6 +48,7 @@ async def get_mailings(
     mailings, total = await service.list(
         status=filters.status,
         search=filters.search,
+        created_by_id=owner_scope(current_user),
         limit=limit,
         offset=offset,
     )
@@ -102,7 +103,10 @@ async def update_mailing(
     service = MailingService(session)
     try:
         mailing = await service.update(
-            mailing_id, payload, updated_by_id=current_user.id
+            mailing_id,
+            payload,
+            updated_by_id=current_user.id,
+            created_by_id=owner_scope(current_user),
         )
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None
@@ -131,11 +135,13 @@ async def update_mailing(
 async def get_mailing(
     session: SessionDep,
     mailing_id: UUID,
-    _current_user: CurrentUserDep,
+    current_user: CurrentUserDep,
 ) -> MailingRead:
     service = MailingService(session)
     try:
-        mailing = await service.get(mailing_id)
+        mailing = await service.get(
+            mailing_id, created_by_id=owner_scope(current_user)
+        )
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None
 
@@ -149,12 +155,12 @@ async def get_mailing(
 )
 async def delete_mailing(
     session: SessionDep,
-    _current_user: CurrentUserDep,
+    current_user: CurrentUserDep,
     mailing_id: UUID,
 ) -> None:
     service = MailingService(session)
     try:
-        await service.delete(mailing_id)
+        await service.delete(mailing_id, created_by_id=owner_scope(current_user))
         await session.commit()
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None
@@ -175,11 +181,11 @@ async def delete_mailing(
 async def send_mailing(
     session: SessionDep,
     mailing_id: UUID,
-    _current_user: CurrentUserDep,
+    current_user: CurrentUserDep,
 ) -> dict[str, str]:
     service = MailingService(session)
     try:
-        await service.publish(mailing_id)
+        await service.publish(mailing_id, created_by_id=owner_scope(current_user))
         await session.commit()
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None

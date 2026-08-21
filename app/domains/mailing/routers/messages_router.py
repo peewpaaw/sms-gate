@@ -2,7 +2,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.deps import CurrentUserDep, SessionDep
+from app.deps import CurrentUserDep, SessionDep, owner_scope
 from app.domains.mailing.application.exceptions import (
     MailingNotFoundError,
     MailingStatusUpdateForbiddenError,
@@ -30,7 +30,10 @@ async def create_message(
     service = MessageService(session)
     try:
         message = await service.create(
-            mailing_id, payload, updated_by_id=current_user.id
+            mailing_id,
+            payload,
+            updated_by_id=current_user.id,
+            created_by_id=owner_scope(current_user),
         )
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None
@@ -50,13 +53,19 @@ async def create_message(
 )
 async def get_message(
     session: SessionDep,
-    _current_user: CurrentUserDep,
+    current_user: CurrentUserDep,
     mailing_id: UUID,
     message_id: UUID,
 ) -> MessageRead:
     service = MessageService(session)
     try:
-        message = await service.get(mailing_id, message_id)
+        message = await service.get(
+            mailing_id,
+            message_id,
+            created_by_id=owner_scope(current_user),
+        )
+    except MailingNotFoundError:
+        raise HTTPException(status_code=404, detail="Mailing not found") from None
     except MessageNotFoundError:
         raise HTTPException(status_code=404, detail="Message not found") from None
     return MessageRead.model_validate(message)
@@ -79,7 +88,11 @@ async def update_message(
     service = MessageService(session)
     try:
         message = await service.update(
-            mailing_id, message_id, payload, updated_by_id=current_user.id
+            mailing_id,
+            message_id,
+            payload,
+            updated_by_id=current_user.id,
+            created_by_id=owner_scope(current_user),
         )
     except MailingNotFoundError:
         raise HTTPException(status_code=404, detail="Mailing not found") from None
@@ -117,7 +130,10 @@ async def delete_message(
     service = MessageService(session)
     try:
         await service.delete(
-            mailing_id, message_id, updated_by_id=current_user.id
+            mailing_id,
+            message_id,
+            updated_by_id=current_user.id,
+            created_by_id=owner_scope(current_user),
         )
         await session.commit()
     except MailingNotFoundError:

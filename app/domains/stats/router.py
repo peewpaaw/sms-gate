@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.deps import CurrentUserDep, SessionDep
+from app.deps import CurrentUserDep, SessionDep, owner_scope
 from app.domains.mailing.enums import MessageStatus
 from app.domains.stats.period import (
     InvalidStatsPeriodError,
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 )
 async def message_stats_by_provider(
     session: SessionDep,
-    _current_user: CurrentUserDep,
+    current_user: CurrentUserDep,
     date_from: date = Query(description="Начало периода (inclusive), календарная дата."),
     date_to: date = Query(description="Конец периода (inclusive), календарная дата."),
     timezone: str = Query(
@@ -72,6 +72,7 @@ async def message_stats_by_provider(
         timezone_name=timezone,
         provider_codes=provider_code,
         statuses=status,
+        created_by_id=owner_scope(current_user),
     )
 
     if fill_gaps:

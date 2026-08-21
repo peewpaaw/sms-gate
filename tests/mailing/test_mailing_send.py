@@ -1,4 +1,5 @@
 from uuid import UUID, uuid4
+import secrets
 
 import pytest
 from httpx import AsyncClient
@@ -6,11 +7,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.db.session import async_session_factory
+from app.domains.auth.enums import UserRole
 from app.domains.mailing.enums import MailingStatus, MessageStatus, MessagesBatchStatus
 from app.domains.mailing.models import Mailing
 from app.messaging.outbox.enums import OutboxStatus
 from app.messaging.outbox.models import Outbox
-from tests.conftest import API_PREFIX, set_mailing_status
+from tests.conftest import API_PREFIX, _insert_user, set_mailing_status
 
 
 async def _create_mailing(
@@ -201,3 +203,22 @@ async def test_send_mailing_forbidden_when_not_created(
 
     mailing = await _load_mailing(UUID(created["id"]))
     assert mailing.batches == []
+
+
+@pytest.mark.asyncio
+async def test_send_mailing_foreign_returns_404(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    created = await _create_mailing(client, auth_headers, mailing_payload())
+    other_headers = _insert_user(
+        email=f"other-{uuid4()}@example.com",
+        password=secrets.token_urlsafe(16),
+        role=UserRole.USER,
+        name="other",
+    )
+
+    response = await _send_mailing(client, other_headers, created["id"])
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Mailing not found"

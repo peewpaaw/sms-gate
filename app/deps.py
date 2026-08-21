@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -61,3 +62,7 @@ async def get_current_admin(
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
 CurrentAdminDep = Annotated[User, Depends(get_current_admin)]
+
+
+def owner_scope(user: User) -> UUID | None:
+    return None if user.role == UserRole.ADMIN else user.id

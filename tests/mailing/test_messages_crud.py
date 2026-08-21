@@ -1,10 +1,12 @@
 from uuid import uuid4
+import secrets
 
 import pytest
 from httpx import AsyncClient
 
+from app.domains.auth.enums import UserRole
 from app.domains.mailing.enums import MailingStatus, MessageStatus
-from tests.conftest import API_PREFIX, set_mailing_status, set_message_status
+from tests.conftest import API_PREFIX, _insert_user, set_mailing_status, set_message_status
 
 
 async def _create_mailing(
@@ -227,3 +229,50 @@ async def test_delete_message_forbidden_when_message_not_created(
         headers=auth_headers,
     )
     assert response.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_messages_foreign_mailing_returns_404(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    mailing_payload,
+) -> None:
+    mailing = await _create_mailing(client, auth_headers, mailing_payload())
+    mailing_id = mailing["id"]
+    message_id = mailing["messages"][0]["id"]
+    other_headers = _insert_user(
+        email=f"other-{uuid4()}@example.com",
+        password=secrets.token_urlsafe(16),
+        role=UserRole.USER,
+        name="other",
+    )
+
+    get_response = await client.get(
+        f"{API_PREFIX}/mailings/{mailing_id}/messages/{message_id}",
+        headers=other_headers,
+    )
+    assert get_response.status_code == 404
+    assert get_response.json()["detail"] == "Mailing not found"
+
+    create_response = await client.post(
+        f"{API_PREFIX}/mailings/{mailing_id}/messages/",
+        json={"msisdn": "375291234567", "text": "x"},
+        headers=other_headers,
+    )
+    assert create_response.status_code == 404
+    assert create_response.json()["detail"] == "Mailing not found"
+
+    update_response = await client.put(
+        f"{API_PREFIX}/mailings/{mailing_id}/messages/{message_id}",
+        json={"msisdn": "375291234567", "text": "hijack"},
+        headers=other_headers,
+    )
+    assert update_response.status_code == 404
+    assert update_response.json()["detail"] == "Mailing not found"
+
+    delete_response = await client.delete(
+        f"{API_PREFIX}/mailings/{mailing_id}/messages/{message_id}",
+        headers=other_headers,
+    )
+    assert delete_response.status_code == 404
+    assert delete_response.json()["detail"] == "Mailing not found"
