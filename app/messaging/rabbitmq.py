@@ -1,0 +1,76 @@
+import aio_pika
+from aio_pika.abc import AbstractChannel, AbstractRobustConnection
+
+from app.core.config import get_settings
+from app.messaging import topology
+
+
+async def connect() -> AbstractRobustConnection:
+    return await aio_pika.connect_robust(get_settings().rabbitmq_url)
+
+
+async def setup_topology(channel: AbstractChannel) -> None:
+    """
+    Exchanges:
+    - mailing.x
+
+    Queues:
+    - send.q - for sending messages
+    - send.retry.q - for retrying messages
+    - status.q - for checking status of messages
+    - status.retry.q - for retrying status checks
+    """
+    mailing_exchange = await channel.declare_exchange(
+        topology.MAILING_EXCHANGE, aio_pika.ExchangeType.DIRECT, durable=True
+    )
+
+    send_dlq = await channel.declare_queue(topology.SEND_BATCH_DLQ, durable=True)
+    status_dlq = await channel.declare_queue(topology.STATUS_DLQ, durable=True)
+    await send_dlq.bind(
+        mailing_exchange, routing_key=topology.SEND_BATCH_DEAD_ROUTING_KEY
+    )
+    await status_dlq.bind(mailing_exchange, routing_key=topology.STATUS_DEAD_ROUTING_KEY)
+
+    send_queue = await channel.declare_queue(
+        topology.SEND_BATCH_QUEUE,
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": topology.MAILING_EXCHANGE,
+            "x-dead-letter-routing-key": topology.SEND_BATCH_DEAD_ROUTING_KEY,
+        },
+    )
+    send_retry_queue = await channel.declare_queue(
+        topology.SEND_BATCH_RETRY_QUEUE,
+        durable=True,
+        arguments={
+            "x-message-ttl": topology.RETRY_TTL_MS,
+            "x-dead-letter-exchange": topology.MAILING_EXCHANGE,
+            "x-dead-letter-routing-key": topology.SEND_BATCH_ROUTING_KEY,
+        },
+    )
+    await send_queue.bind(mailing_exchange, routing_key=topology.SEND_BATCH_ROUTING_KEY)
+    await send_retry_queue.bind(
+        mailing_exchange, routing_key=topology.SEND_BATCH_RETRY_ROUTING_KEY
+    )
+
+    status_queue = await channel.declare_queue(
+        topology.STATUS_QUEUE,
+        durable=True,
+        arguments={
+            "x-dead-letter-exchange": topology.MAILING_EXCHANGE,
+            "x-dead-letter-routing-key": topology.STATUS_DEAD_ROUTING_KEY,
+        },
+    )
+    status_retry_queue = await channel.declare_queue(
+        topology.STATUS_RETRY_QUEUE,
+        durable=True,
+        arguments={
+            "x-message-ttl": topology.RETRY_TTL_MS,
+            "x-dead-letter-exchange": topology.MAILING_EXCHANGE,
+            "x-dead-letter-routing-key": topology.STATUS_ROUTING_KEY,
+        },
+    )
+    await status_queue.bind(mailing_exchange, routing_key=topology.STATUS_ROUTING_KEY)
+    await status_retry_queue.bind(
+        mailing_exchange, routing_key=topology.STATUS_RETRY_ROUTING_KEY
+    )

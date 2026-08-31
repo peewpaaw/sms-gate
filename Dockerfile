@@ -1,0 +1,26 @@
+FROM python:3.14-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml ./
+COPY README.md ./
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -e . \
+    && chmod +x /docker-entrypoint.sh
+
+EXPOSE 8000
+
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
